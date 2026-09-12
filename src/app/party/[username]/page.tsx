@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import RemoveFriendButton from "./RemoveFriendButton"
+import ChallengeButton from "./ChallengeButton"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 
@@ -45,6 +46,17 @@ export default async function FriendProfilePage({ params }: { params: { username
         orderBy: { unlockedAt: 'desc' },
         take: 5,
         include: { achievement: true }
+      },
+      quests: {
+        where: { status: 'COMPLETED' },
+        orderBy: { completedAt: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          title: true,
+          xpReward: true,
+          completedAt: true
+        }
       }
     }
   })
@@ -138,9 +150,12 @@ export default async function FriendProfilePage({ params }: { params: { username
             <p className="text-xs text-white/50 mt-2">{user.xp} / {nextLevelXp} XP</p>
           </div>
 
-          {isFriend && (
-            <div className="absolute top-4 right-4">
-              <RemoveFriendButton friendId={user.id} username={user.username} />
+          {currentUserId && currentUserId !== user.id && (
+            <div className="absolute top-4 right-4 flex flex-col items-end gap-2">
+              <ChallengeButton userId={user.id} />
+              {isFriend && (
+                <RemoveFriendButton friendId={user.id} username={user.username} />
+              )}
             </div>
           )}
         </div>
@@ -178,6 +193,37 @@ export default async function FriendProfilePage({ params }: { params: { username
                       <p className="text-xs text-[var(--primary)]/70 mt-2">
                         Unlocked on {new Date(unlockedAt).toLocaleDateString()}
                       </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          <div className="glass-panel p-6 md:p-8 rounded-2xl relative z-10 border-t-4 border-[var(--secondary)] mt-8">
+            <h2 className="text-2xl font-black mb-6 flex items-center gap-2">
+              <span className="text-[var(--secondary)]">◆</span> RECENT ACTIVITY
+            </h2>
+            
+            {user.quests.length === 0 ? (
+              <p className="text-white/50 italic text-center py-8 bg-black/20 rounded-xl border border-white/5">
+                No recent public activity.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {user.quests.map((quest) => (
+                  <div key={quest.id} className="bg-black/30 p-4 rounded-lg flex items-center justify-between border border-white/5">
+                    <div className="flex items-center gap-3">
+                      <div className="text-green-500">✓</div>
+                      <div>
+                        <h3 className="font-bold text-white/90">Completed "{quest.title}"</h3>
+                        <p className="text-xs text-white/50 mt-1">
+                          {quest.completedAt ? new Date(quest.completedAt).toLocaleDateString() : 'Recently'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-sm font-bold text-[var(--primary)] flex items-center gap-1">
+                      +{quest.xpReward} XP
                     </div>
                   </div>
                 ))}

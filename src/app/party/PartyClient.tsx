@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { searchUsers, sendFriendRequest, acceptFriendRequest, declineFriendRequest } from "../actions/social"
+import { searchUsers, sendFriendRequest, acceptFriendRequest, declineFriendRequest, cancelFriendRequest } from "../actions/social"
 import Link from "next/link"
 
 export type UserData = any;
@@ -10,13 +10,16 @@ export type RequestData = any;
 
 export default function PartyClient({ 
   initialFriends, 
-  initialRequests 
+  initialRequests,
+  initialSentRequests = []
 }: { 
   initialFriends: UserData[], 
-  initialRequests: RequestData[] 
+  initialRequests: RequestData[],
+  initialSentRequests?: RequestData[]
 }) {
   const [friends, setFriends] = useState(initialFriends)
   const [requests, setRequests] = useState(initialRequests)
+  const [sentRequests, setSentRequests] = useState(initialSentRequests)
   
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<UserData[]>([])
@@ -75,6 +78,18 @@ export default function PartyClient({
       setRequests(prev => prev.filter(r => r.id !== requestId))
     } else {
       alert(res.error || "Failed to decline")
+    }
+  }
+
+  const handleCancelRequest = async (requestId: string) => {
+    setLoadingAction(`cancel-${requestId}`)
+    const res = await cancelFriendRequest(requestId)
+    setLoadingAction(null)
+    
+    if (res.success) {
+      setSentRequests(prev => prev.filter(r => r.id !== requestId))
+    } else {
+      alert(res.error || "Failed to cancel")
     }
   }
 
@@ -180,6 +195,52 @@ export default function PartyClient({
                       className="bg-red-500/20 text-red-400 hover:bg-red-500/30 px-3 py-1 rounded transition-colors"
                     >
                       Decline
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        </section>
+      )}
+
+      {/* Sent Requests */}
+      {sentRequests.length > 0 && (
+        <section>
+          <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+            Sent Requests 
+            <span className="bg-gray-600 text-white text-xs px-2 py-1 rounded-full">{sentRequests.length}</span>
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <AnimatePresence>
+              {sentRequests.map(req => (
+                <motion.div
+                  key={req.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="glass-panel p-4 flex items-center justify-between opacity-70"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center overflow-hidden">
+                      {req.receiver.avatars?.[0]?.avatar ? (
+                        <img src={req.receiver.avatars[0].avatar.imageUrl} alt="Avatar" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="font-bold text-gray-400">{req.receiver.username[0].toUpperCase()}</span>
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="font-bold">{req.receiver.username}</h3>
+                      <p className="text-xs text-gray-400">Level {req.receiver.level}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleCancelRequest(req.id)}
+                      disabled={loadingAction === `cancel-${req.id}`}
+                      className="bg-red-500/10 text-red-400 hover:bg-red-500/30 px-3 py-1 rounded transition-colors"
+                    >
+                      Cancel
                     </button>
                   </div>
                 </motion.div>

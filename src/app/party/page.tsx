@@ -41,6 +41,7 @@ export default async function PartyPage() {
         <PartyClient 
           initialFriends={partyData.friends as any} 
           initialRequests={partyData.pendingRequests as any} 
+          initialSentRequests={partyData.sentRequests as any}
         />
       </div>
     </div>

@@ -96,6 +96,77 @@ export async function declineDuel(duelId: string) {
   return updated
 }
 
+export async function verifyDuelCompletion(duelId: string) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) throw new Error("Unauthorized")
+
+  const duel = await prisma.duel.findUnique({
+    where: { id: duelId },
+    include: {
+      challenger: true,
+      defender: true
+    }
+  })
+
+  if (!duel || duel.status !== "ACCEPTED") {
+    throw new Error("Duel is not in an active state")
+  }
+
+  // Verify that the person requesting verification is a participant
+  if (duel.challengerId !== session.user.id && duel.defenderId !== session.user.id) {
+    throw new Error("Unauthorized to verify this duel")
+  }
+
+  // Calculate winner based on objectiveType attribute
+  const attr = duel.objectiveType.toLowerCase() as keyof typeof duel.challenger
+  const challengerScore = (duel.challenger[attr] as number) || 0
+  const defenderScore = (duel.defender[attr] as number) || 0
+
+  let winnerId = null;
+  let loserId = null;
+  if (challengerScore > defenderScore) {
+    winnerId = duel.challengerId;
+    loserId = duel.defenderId;
+  } else if (defenderScore > challengerScore) {
+    winnerId = duel.defenderId;
+    loserId = duel.challengerId;
+  } else {
+    // Tie goes to defender for now
+    winnerId = duel.defenderId;
+    loserId = duel.challengerId;
+  }
+
+  const updatedDuel = await prisma.duel.update({
+    where: { id: duelId },
+    data: {
+      status: "COMPLETED",
+      winnerId: winnerId,
+      completedAt: new Date()
+    }
+  })
+
+  // Give rewards
+  await prisma.user.update({
+    where: { id: winnerId },
+    data: {
+      xp: { increment: 50 },
+      gold: { increment: duel.wager > 0 ? duel.wager : 10 }
+    }
+  })
+
+  await prisma.user.update({
+    where: { id: loserId },
+    data: {
+      xp: { increment: 10 } // Participation reward
+    }
+  })
+
+  revalidatePath("/duels")
+  revalidatePath("/party")
+  
+  return { success: true, winnerId }
+}
+
 export async function getDuels() {
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) {

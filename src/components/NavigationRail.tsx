@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Swords, User, TrendingUp, Backpack, Trophy, LogOut, Menu, X, Target, Wind, Users, Settings, Globe, Shield } from "lucide-react"
+import { Home, Swords, User, TrendingUp, Backpack, Trophy, LogOut, Menu, X, Target, Wind, Users, Settings, Globe, Shield, MapPin } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { label: "Home", href: "/", icon: Home },
   { label: "Quests", href: "/quests", icon: Swords },
   { label: "World", href: "/world", icon: Globe },
+  { label: "Nearby", href: "/nearby", icon: MapPin },
   { label: "Character", href: "/character", icon: User },
   { label: "Focus", href: "/focus", icon: Target },
   { label: "Meditate", href: "/meditate", icon: Wind },

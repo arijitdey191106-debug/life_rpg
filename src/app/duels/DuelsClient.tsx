@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { challengeFriend, acceptDuel, declineDuel } from "@/app/actions/duels"
+import { challengeFriend, acceptDuel, declineDuel, verifyDuelCompletion } from "@/app/actions/duels"
 import { useRouter } from "next/navigation"
 
 type UserBasic = {
@@ -88,6 +88,21 @@ export default function DuelsClient({ initialDuels, friends, currentUserId }: Du
     }
   }
 
+  const handleComplete = async (duelId: string) => {
+    try {
+      setLoadingId(duelId)
+      const res = await verifyDuelCompletion(duelId)
+      if (res.success) {
+        alert(res.winnerId === currentUserId ? "Victory! You won the duel!" : "Defeat. You lost the duel.")
+        router.refresh()
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to complete duel")
+    } finally {
+      setLoadingId(null)
+    }
+  }
+
   const renderDuelCard = (duel: Duel) => {
     const isChallenger = duel.challengerId === currentUserId
     const opponent = isChallenger ? duel.defender : duel.challenger
@@ -140,7 +155,13 @@ export default function DuelsClient({ initialDuels, friends, currentUserId }: Du
             <span className="px-3 py-1 bg-gray-800 text-gray-400 rounded text-sm font-mono border border-gray-700">Waiting...</span>
           )}
           {duel.status === "ACCEPTED" && (
-            <span className="px-3 py-1 bg-[var(--secondary)]/20 text-[var(--secondary)] rounded text-sm font-bold border border-[var(--secondary)]/50 animate-pulse">In Progress</span>
+            <button 
+              onClick={() => handleComplete(duel.id)}
+              disabled={loadingId === duel.id}
+              className="px-4 py-2 bg-[var(--secondary)] hover:bg-[var(--secondary)]/80 text-white rounded font-bold text-sm shadow-[0_0_10px_var(--secondary)] animate-pulse disabled:opacity-50"
+            >
+              Resolve Duel
+            </button>
           )}
           {duel.status === "COMPLETED" && duel.winner && (
             <span className={`px-3 py-1 rounded text-sm font-bold border ${duel.winner.id === currentUserId ? 'bg-green-900/30 text-green-400 border-green-700' : 'bg-red-900/30 text-red-400 border-red-700'}`}>

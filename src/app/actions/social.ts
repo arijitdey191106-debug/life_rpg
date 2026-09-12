@@ -99,6 +99,31 @@ export async function sendFriendRequest(receiverId: string) {
   }
 }
 
+export async function cancelFriendRequest(requestId: string) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return { success: false, error: "Unauthorized" }
+  const userId = (session.user as any).id as string
+
+  try {
+    const request = await prisma.friendRequest.findUnique({
+      where: { id: requestId }
+    })
+
+    if (!request || request.senderId !== userId || request.status !== "PENDING") {
+      return { success: false, error: "Invalid request" }
+    }
+
+    await prisma.friendRequest.delete({
+      where: { id: requestId }
+    })
+
+    return { success: true }
+  } catch (error) {
+    console.error("Cancel friend request error:", error)
+    return { success: false, error: "Failed to cancel request" }
+  }
+}
+
 export async function acceptFriendRequest(requestId: string) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return { success: false, error: "Unauthorized" }
@@ -224,6 +249,27 @@ export async function getParty() {
       }
     })
 
+    // Get pending sent requests
+    const sentRequests = await prisma.friendRequest.findMany({
+      where: {
+        senderId: userId,
+        status: "PENDING"
+      },
+      include: {
+        receiver: {
+          select: {
+            id: true,
+            username: true,
+            level: true,
+            avatars: {
+              where: { equipped: true },
+              include: { avatar: true }
+            }
+          }
+        }
+      }
+    })
+
     // Get friends
     const friendships = await prisma.friendship.findMany({
       where: {
@@ -274,7 +320,7 @@ export async function getParty() {
       return f.userId === userId ? f.friend : f.user
     })
 
-    return { success: true, pendingRequests, friends }
+    return { success: true, pendingRequests, sentRequests, friends }
   } catch (error) {
     console.error("Get party error:", error)
     return { success: false, error: "Failed to get party data" }

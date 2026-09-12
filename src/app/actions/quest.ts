@@ -1,0 +1,200 @@
+"use server"
+
+import { revalidatePath } from 'next/cache'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { calculateLevelProgress } from '@/lib/rpgEngine'
+import { checkAchievements } from '@/app/actions/achievements'
+
+const BASE_REWARDS = {
+  EASY: { xp: 10, gold: 5 },
+  MEDIUM: { xp: 25, gold: 15 },
+  HARD: { xp: 50, gold: 30 },
+  EPIC: { xp: 100, gold: 60 }
+}
+
+const DURATION_MODIFIER = 0.5
+
+export async function createQuest(formData: FormData) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) throw new Error('Unauthorized')
+
+  const title = formData.get('title') as string
+  const description = formData.get('description') as string | null
+  const category = formData.get('category') as string
+  const difficulty = formData.get('difficulty') as keyof typeof BASE_REWARDS
+  const duration = formData.get('duration') ? parseInt(formData.get('duration') as string) : null
+  const dueDateStr = formData.get('dueDate') as string
+  const dueDate = dueDateStr ? new Date(dueDateStr) : null
+  const isRecurring = formData.get('isRecurring') === 'true'
+  const recurringInterval = formData.get('recurringInterval') as string | null
+
+  if (!title || !category || !difficulty) {
+    throw new Error('Missing required fields')
+  }
+
+  let xpReward = BASE_REWARDS[difficulty]?.xp || 10
+  let goldReward = BASE_REWARDS[difficulty]?.gold || 5
+
+  if (duration && duration > 0) {
+    xpReward += Math.floor(duration * DURATION_MODIFIER)
+    goldReward += Math.floor((duration * DURATION_MODIFIER) / 2)
+  }
+
+  await prisma.quest.create({
+    data: {
+      userId: session.user.id,
+      title,
+      description,
+      category,
+      difficulty,
+      duration,
+      xpReward,
+      goldReward,
+      status: 'PENDING',
+      dueDate,
+      isRecurring,
+      recurringInterval
+    }
+  })
+
+  revalidatePath('/quests')
+}
+
+export async function editQuest(questId: string, formData: FormData) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) throw new Error('Unauthorized')
+
+  const quest = await prisma.quest.findUnique({ where: { id: questId } })
+  if (!quest || quest.userId !== session.user.id) throw new Error('Unauthorized')
+
+  const title = formData.get('title') as string
+  const description = formData.get('description') as string | null
+  const category = formData.get('category') as string
+  const difficulty = formData.get('difficulty') as keyof typeof BASE_REWARDS
+  const duration = formData.get('duration') ? parseInt(formData.get('duration') as string) : null
+  const dueDateStr = formData.get('dueDate') as string
+  const dueDate = dueDateStr ? new Date(dueDateStr) : null
+  const isRecurring = formData.get('isRecurring') === 'true'
+  const recurringInterval = formData.get('recurringInterval') as string | null
+
+  if (!title || !category || !difficulty) {
+    throw new Error('Missing required fields')
+  }
+
+  let xpReward = BASE_REWARDS[difficulty]?.xp || 10
+  let goldReward = BASE_REWARDS[difficulty]?.gold || 5
+
+  if (duration && duration > 0) {
+    xpReward += Math.floor(duration * DURATION_MODIFIER)
+    goldReward += Math.floor((duration * DURATION_MODIFIER) / 2)
+  }
+
+  await prisma.quest.update({
+    where: { id: questId },
+    data: {
+      title,
+      description,
+      category,
+      difficulty,
+      duration,
+      xpReward,
+      goldReward,
+      dueDate,
+      isRecurring,
+      recurringInterval
+    }
+  })
+
+  revalidatePath('/quests')
+}
+
+export async function completeQuest(questId: string) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) throw new Error('Unauthorized')
+
+  const quest = await prisma.quest.findUnique({ where: { id: questId } })
+  if (!quest || quest.userId !== session.user.id) throw new Error('Unauthorized')
+  if (quest.status === 'COMPLETED') throw new Error('Already completed')
+
+  const user = await prisma.user.findUnique({ where: { id: session.user.id } })
+  if (!user) throw new Error('User not found')
+
+  const now = new Date()
+  let currentStreak = user.currentStreak
+  let bestStreak = user.bestStreak
+  const lastActiveDate = user.lastActive ? user.lastActive.toISOString().split('T')[0] : null
+  const todayStr = now.toISOString().split('T')[0]
+
+  if (lastActiveDate !== todayStr) {
+      if (lastActiveDate) {
+          const lastDate = new Date(lastActiveDate)
+          const yesterday = new Date(now)
+          yesterday.setDate(yesterday.getDate() - 1)
+          if (lastDate.toISOString().split('T')[0] === yesterday.toISOString().split('T')[0]) {
+              currentStreak++
+          } else {
+              currentStreak = 1
+          }
+      } else {
+          currentStreak = 1
+      }
+  }
+
+  if (currentStreak > bestStreak) {
+      bestStreak = currentStreak
+  }
+
+  const categoryAttr = quest.category.toLowerCase()
+  const attributeVal = (user as any)[categoryAttr] || 0
+
+  const newXp = user.xp + quest.xpReward
+  const levelProgress = calculateLevelProgress(newXp)
+
+  await prisma.$transaction([
+    prisma.quest.update({
+      where: { id: questId },
+      data: { status: 'COMPLETED', completedAt: now }
+    }),
+    prisma.user.update({
+      where: { id: session.user.id },
+      data: {
+        xp: newXp,
+        level: levelProgress.currentLevel,
+        gold: user.gold + quest.goldReward,
+        currentStreak,
+        bestStreak,
+        lastActive: now,
+        [categoryAttr]: attributeVal + 1
+      }
+    })
+  ])
+
+  // check achievements
+  try {
+    await checkAchievements(session.user.id)
+  } catch (e) {
+    console.error("Failed to check achievements", e)
+  }
+
+  revalidatePath('/quests')
+  return { 
+    xp: quest.xpReward, 
+    gold: quest.goldReward, 
+    category: quest.category, 
+    levelUp: levelProgress.currentLevel > user.level ? levelProgress.currentLevel : null 
+  }
+}
+
+export async function deleteQuest(questId: string) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) throw new Error('Unauthorized')
+
+  const quest = await prisma.quest.findUnique({ where: { id: questId } })
+  if (!quest || quest.userId !== session.user.id) throw new Error('Unauthorized')
+
+  await prisma.quest.delete({ where: { id: questId } })
+  
+  revalidatePath('/quests')
+}

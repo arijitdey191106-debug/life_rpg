@@ -37,7 +37,6 @@ export default function LoginPage() {
         setError("Invalid identifier or passcode")
       } else {
         router.push("/")
-        router.refresh()
       }
     } catch {
       setError("Connection failed. Try again.")

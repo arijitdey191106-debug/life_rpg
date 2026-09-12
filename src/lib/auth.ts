@@ -3,18 +3,42 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 
-// CRITICAL FIX: Next.js App Router Server Components lose the Request object.
-// If NEXTAUTH_URL is missing or incorrectly set to localhost on Vercel, 
-// getServerSession expects a non-secure cookie while the API route sets a secure one.
-// This perfectly syncs them by dynamically forcing the correct HTTPS URL.
-if (process.env.VERCEL) {
-  process.env.NEXTAUTH_URL = process.env.NEXTAUTH_URL && !process.env.NEXTAUTH_URL.includes("localhost") 
-    ? process.env.NEXTAUTH_URL 
-    : `https://${process.env.VERCEL_URL}`
-}
+// NEXTAUTH_URL override removed: using explicit cookie configuration instead.
+
+const useSecureCookies = !!process.env.VERCEL
+const cookiePrefix = useSecureCookies ? "__Secure-" : ""
+const hostPrefix = useSecureCookies ? "__Host-" : ""
 
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET || "life-rpg-fallback-secret-key-2024",
+  cookies: {
+    sessionToken: {
+      name: `${cookiePrefix}next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: useSecureCookies,
+      },
+    },
+    callbackUrl: {
+      name: `${cookiePrefix}next-auth.callback-url`,
+      options: {
+        sameSite: "lax",
+        path: "/",
+        secure: useSecureCookies,
+      },
+    },
+    csrfToken: {
+      name: `${hostPrefix}next-auth.csrf-token`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: useSecureCookies,
+      },
+    },
+  },
   providers: [
     CredentialsProvider({
       name: "Credentials",

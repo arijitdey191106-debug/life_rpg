@@ -110,15 +110,75 @@ export async function editQuest(questId: string, formData: FormData) {
   revalidatePath('/quests')
 }
 
-export async function completeQuest(questId: string) {
+export async function deleteQuest(questId: string) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) throw new Error('Unauthorized')
 
   const quest = await prisma.quest.findUnique({ where: { id: questId } })
   if (!quest || quest.userId !== session.user.id) throw new Error('Unauthorized')
-  if (quest.status === 'COMPLETED') throw new Error('Already completed')
 
-  const user = await prisma.user.findUnique({ where: { id: session.user.id } })
+  await prisma.quest.delete({ where: { id: questId } })
+  
+  revalidatePath('/quests')
+}
+
+export async function startQuest(questId: string) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) throw new Error('Unauthorized')
+
+  const quest = await prisma.quest.findUnique({ where: { id: questId } })
+  if (!quest || quest.userId !== session.user.id) throw new Error('Unauthorized')
+  if (quest.status !== 'AVAILABLE') throw new Error('Invalid state transition')
+
+  await prisma.quest.update({
+    where: { id: questId },
+    data: { status: 'IN_PROGRESS' }
+  })
+  revalidatePath('/quests')
+}
+
+export async function reportQuestObjectiveMet(questId: string) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) throw new Error('Unauthorized')
+
+  const quest = await prisma.quest.findUnique({ where: { id: questId } })
+  if (!quest || quest.userId !== session.user.id) throw new Error('Unauthorized')
+  if (quest.status !== 'IN_PROGRESS') throw new Error('Invalid state transition')
+
+  await prisma.quest.update({
+    where: { id: questId },
+    data: { status: 'OBJECTIVE_MET' }
+  })
+  revalidatePath('/quests')
+}
+
+export async function verifyQuest(questId: string) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) throw new Error('Unauthorized')
+
+  const quest = await prisma.quest.findUnique({ where: { id: questId } })
+  if (!quest || quest.userId !== session.user.id) throw new Error('Unauthorized')
+  if (quest.status !== 'OBJECTIVE_MET') throw new Error('Invalid state transition')
+
+  // Self-created quests have no rigid external proof to query, 
+  // so we implicitly trust the OBJECTIVE_MET report and advance it.
+  await prisma.quest.update({
+    where: { id: questId },
+    data: { status: 'VERIFIED' }
+  })
+  revalidatePath('/quests')
+}
+
+export async function claimQuestReward(questId: string) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) throw new Error('Unauthorized')
+  const userId = session.user.id
+
+  const quest = await prisma.quest.findUnique({ where: { id: questId } })
+  if (!quest || quest.userId !== userId) throw new Error('Unauthorized')
+  if (quest.status !== 'VERIFIED') throw new Error('Invalid state transition. Must be VERIFIED.')
+
+  const user = await prisma.user.findUnique({ where: { id: userId } })
   if (!user) throw new Error('User not found')
 
   const now = new Date()
@@ -152,28 +212,44 @@ export async function completeQuest(questId: string) {
   const newXp = user.xp + quest.xpReward
   const levelProgress = calculateLevelProgress(newXp)
 
-  await prisma.$transaction([
-    prisma.quest.update({
-      where: { id: questId },
-      data: { status: 'COMPLETED', completedAt: now }
-    }),
-    prisma.user.update({
-      where: { id: session.user.id },
-      data: {
-        xp: newXp,
-        level: levelProgress.currentLevel,
-        gold: user.gold + quest.goldReward,
-        currentStreak,
-        bestStreak,
-        lastActive: now,
-        [categoryAttr]: attributeVal + 1
-      }
-    })
-  ])
+  try {
+    await prisma.$transaction([
+      prisma.rewardTransaction.create({
+        data: { 
+          userId, 
+          sourceId: questId, 
+          sourceType: "QUEST", 
+          xpGranted: quest.xpReward, 
+          goldGranted: quest.goldReward 
+        }
+      }),
+      prisma.quest.update({
+        where: { id: questId },
+        data: { status: 'CLAIMED', completedAt: now }
+      }),
+      prisma.user.update({
+        where: { id: userId },
+        data: {
+          xp: newXp,
+          level: levelProgress.currentLevel,
+          gold: user.gold + quest.goldReward,
+          currentStreak,
+          bestStreak,
+          lastActive: now,
+          [categoryAttr]: attributeVal + 1
+        }
+      })
+    ])
+  } catch (error: any) {
+    if (error.code === 'P2002') {
+      throw new Error("Reward already claimed.")
+    }
+    throw error
+  }
 
   // check achievements
   try {
-    await checkAchievements(session.user.id)
+    await checkAchievements(userId)
   } catch (e) {
     console.error("Failed to check achievements", e)
   }
@@ -185,16 +261,4 @@ export async function completeQuest(questId: string) {
     category: quest.category, 
     levelUp: levelProgress.currentLevel > user.level ? levelProgress.currentLevel : null 
   }
-}
-
-export async function deleteQuest(questId: string) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) throw new Error('Unauthorized')
-
-  const quest = await prisma.quest.findUnique({ where: { id: questId } })
-  if (!quest || quest.userId !== session.user.id) throw new Error('Unauthorized')
-
-  await prisma.quest.delete({ where: { id: questId } })
-  
-  revalidatePath('/quests')
 }

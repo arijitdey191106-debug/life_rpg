@@ -3,8 +3,9 @@
 import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle2, Trash2, Edit2, Plus, Calendar, Clock, RefreshCw, X, Shield, Sparkles, Star } from 'lucide-react'
-import { createQuest, editQuest, completeQuest, deleteQuest } from '@/app/actions/quest'
-import { claimChallengeReward } from '@/app/actions/challenges'
+import { createQuest, editQuest, claimQuestReward, deleteQuest } from '@/app/actions/quest'
+import { acceptSystemQuest } from '@/app/actions/acceptSystemQuest'
+import { processSystemChallenge } from '@/app/actions/processChallenge'
 
 type Quest = {
   id: string
@@ -16,6 +17,7 @@ type Quest = {
   xpReward: number
   goldReward: number
   status: string
+  type: string
   dueDate: Date | null
   isRecurring: boolean
   recurringInterval: string | null
@@ -79,6 +81,21 @@ export default function QuestBoardClient({
   
   const [celebration, setCelebration] = useState<{ xp: number; gold: number; category: string } | null>(null)
   const [levelUp, setLevelUp] = useState<number | null>(null)
+  
+  const [questError, setQuestError] = useState<{
+    title: string;
+    description: string;
+    required?: number;
+    current?: number;
+    remaining?: number;
+    noun?: string;
+  } | null>(null)
+  
+  const [questSuccess, setQuestSuccess] = useState<{
+    title: string;
+    xp: number;
+    gold: number;
+  } | null>(null)
 
   const openCreateModal = () => {
     setEditingQuest(null)
@@ -101,20 +118,34 @@ export default function QuestBoardClient({
   }
 
   const handleComplete = async (id: string) => {
-    const res = await completeQuest(id)
-    setCelebration({ xp: res.xp, gold: res.gold, category: res.category })
-    if (res.levelUp) {
-      setLevelUp(res.levelUp)
-    }
-    
-    setQuests(prev => prev.map(q => q.id === id ? { ...q, status: 'COMPLETED', completedAt: new Date() } : q))
-    
-    setTimeout(() => {
-      setCelebration(null)
-      if (res.levelUp) {
-        setTimeout(() => setLevelUp(null), 3000)
+    try {
+      const res = await claimQuestReward(id) as any
+      if (res?.error) {
+        setQuestError({
+          title: "VERIFICATION FAILED",
+          description: res.error
+        })
+        return
       }
-    }, 3000)
+      setCelebration({ xp: res.xp, gold: res.gold, category: res.category })
+      if (res.levelUp) {
+        setLevelUp(res.levelUp)
+      }
+      
+      setQuests(prev => prev.map(q => q.id === id ? { ...q, status: 'CLAIMED', completedAt: new Date() } : q))
+      
+      setTimeout(() => {
+        setCelebration(null)
+        if (res.levelUp) {
+          setTimeout(() => setLevelUp(null), 3000)
+        }
+      }, 3000)
+    } catch (err: any) {
+      setQuestError({
+        title: "ERROR",
+        description: err.message || 'Failed to claim reward'
+      })
+    }
   }
 
   const handleDelete = async (id: string) => {
@@ -123,21 +154,50 @@ export default function QuestBoardClient({
       setQuests(prev => prev.filter(q => q.id !== id))
     }
   }
+
+  const handleAcceptSystemQuest = async (id: string) => {
+    try {
+      await acceptSystemQuest(id)
+      window.location.reload()
+    } catch (err: any) {
+      setQuestError({
+        title: "ERROR",
+        description: err.message || 'Failed to accept system quest'
+      })
+    }
+  }
   
   const handleClaimChallenge = async (id: string) => {
-    const res = await claimChallengeReward(id)
+    const res = await processSystemChallenge(id) as any
     if (res?.error) {
-      alert(res.error)
+      if (res.error === "OBJECTIVE_NOT_MET" && res.details) {
+        setQuestError({
+          title: "QUEST NOT COMPLETE",
+          description: `This quest cannot be claimed yet.\n\nREQUIRED\nComplete ${res.details.required} ${res.details.noun.toLowerCase()}.\n\nCURRENT PROGRESS\n${res.details.current} / ${res.details.required} completed\n\nComplete ${res.details.remaining} more to unlock this reward.`,
+          required: res.details.required,
+          current: res.details.current,
+          remaining: res.details.remaining,
+          noun: res.details.noun
+        })
+      } else {
+        setQuestError({
+          title: "VERIFICATION FAILED",
+          description: res.error
+        })
+      }
       return
     }
     
     const challenge = challenges.find(c => c.id === id)
     if (challenge) {
-      setCelebration({ xp: challenge.challenge.xpReward, gold: challenge.challenge.goldReward, category: 'ALL' })
-      setTimeout(() => setCelebration(null), 3000)
+      setQuestSuccess({
+        title: challenge.challenge.name,
+        xp: challenge.challenge.xpReward,
+        gold: challenge.challenge.goldReward
+      })
     }
     
-    setChallenges(prev => prev.map(c => c.id === id ? { ...c, status: 'COMPLETED', completedAt: new Date() } : c))
+    setChallenges(prev => prev.map(c => c.id === id ? { ...c, status: 'CLAIMED', completedAt: new Date() } : c))
   }
 
   const getAttrColor = (category: string) => {
@@ -165,26 +225,30 @@ export default function QuestBoardClient({
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const activeQ = filteredQuests.filter(q => q.status === 'PENDING');
+    const activeQ = filteredQuests.filter(q => q.status === 'PENDING' && q.type !== 'SYSTEM');
+    const systemQ = filteredQuests.filter(q => q.type === 'SYSTEM');
     const completedQ = filteredQuests.filter(q => q.status === 'COMPLETED');
     
     const activeC = filteredChallenges.filter(c => c.status === 'AVAILABLE');
     const completedC = filteredChallenges.filter(c => c.status === 'COMPLETED');
 
     if (tab === 'ALL') {
-      return { quests: activeQ, challenges: activeC };
+      return { quests: [...activeQ, ...systemQ], challenges: activeC };
     }
     if (tab === 'TODAY') {
-      return { 
-        quests: activeQ.filter(q => q.dueDate && q.dueDate <= new Date()), 
-        challenges: activeC.filter(c => c.challenge.type === 'DAILY')
-      };
+      const todayQ = activeQ.filter(q => {
+        if (!q.dueDate) return false;
+        const due = new Date(q.dueDate);
+        due.setHours(0,0,0,0);
+        return due.getTime() === today.getTime();
+      });
+      return { quests: todayQ, challenges: activeC };
     }
     if (tab === 'PERSONAL') {
       return { quests: activeQ, challenges: [] };
     }
     if (tab === 'SYSTEM') {
-      return { quests: [], challenges: activeC };
+      return { quests: systemQ, challenges: activeC };
     }
     if (tab === 'COMPLETED') {
       return { quests: completedQ, challenges: completedC };
@@ -315,7 +379,9 @@ export default function QuestBoardClient({
                   <span className={`text-xs font-bold px-2 py-1 rounded-full border ${getAttrColor(quest.category)}`}>
                     {quest.category}
                   </span>
-                  {quest.status === 'PENDING' ? (
+                  {quest.type === 'SYSTEM' ? (
+                    <span className="text-[10px] font-black tracking-widest text-gray-500 uppercase border border-gray-700 px-2 py-1 rounded">SYSTEM</span>
+                  ) : quest.status === 'PENDING' ? (
                     <div className="flex gap-2">
                       <button onClick={() => openEditModal(quest)} className="text-gray-400 hover:text-white transition-colors" aria-label="Edit Quest">
                         <Edit2 className="w-4 h-4" />
@@ -362,7 +428,14 @@ export default function QuestBoardClient({
                   <span className="text-yellow-400 font-bold flex items-center gap-1">🪙 {quest.goldReward}</span>
                 </div>
                 
-                {quest.status === 'PENDING' && (
+                {quest.type === 'SYSTEM' ? (
+                  <button 
+                    onClick={() => handleAcceptSystemQuest(quest.id)}
+                    className="bg-[var(--primary)] hover:bg-opacity-80 text-white px-4 py-2 text-sm font-bold tracking-widest rounded-md transition-all shadow-[0_0_10px_rgba(138,43,226,0.3)]"
+                  >
+                    ACCEPT QUEST
+                  </button>
+                ) : quest.status === 'PENDING' && (
                   <button 
                     onClick={() => handleComplete(quest.id)}
                     className="bg-green-600/20 hover:bg-green-600/40 text-green-400 p-2 rounded-full transition-all hover:scale-110 border border-green-600/50 shadow-[0_0_10px_rgba(34,197,94,0.3)]"
@@ -516,6 +589,74 @@ export default function QuestBoardClient({
           </motion.div>
         )}
       </AnimatePresence>
+      <AnimatePresence>
+        {questError && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-[#0a0a1a] border border-[var(--primary)]/50 p-8 rounded-xl shadow-[0_0_40px_rgba(138,43,226,0.2)] text-center max-w-sm w-full relative overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[var(--primary)] to-transparent opacity-50" />
+              
+              <h2 className="text-xl font-bold mb-6 text-red-400 tracking-widest">{questError.title}</h2>
+              
+              <p className="text-gray-300 text-sm whitespace-pre-wrap mb-8 leading-relaxed">
+                {questError.description}
+              </p>
+              
+              <button 
+                onClick={() => setQuestError(null)}
+                className="w-full px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg font-bold text-white transition-colors"
+              >
+                GOT IT
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {questSuccess && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-[#0a0a1a] border border-[var(--primary)]/50 p-8 rounded-xl shadow-[0_0_40px_rgba(138,43,226,0.3)] text-center max-w-sm w-full relative overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[var(--primary)] to-transparent opacity-50" />
+              
+              <h2 className="text-2xl font-black mb-2 text-white glow-text uppercase tracking-wider">QUEST COMPLETE</h2>
+              <p className="text-[var(--primary)] font-bold tracking-widest mb-6">{questSuccess.title}</p>
+              
+              <div className="flex justify-center gap-6 mb-8">
+                <div className="flex flex-col items-center">
+                  <span className="text-3xl font-bold text-white">+{questSuccess.xp}</span>
+                  <span className="text-xs text-gray-500 mt-1 font-bold tracking-widest">XP</span>
+                </div>
+                <div className="flex flex-col items-center">
+                  <span className="text-3xl font-bold text-yellow-400">+{questSuccess.gold}</span>
+                  <span className="text-xs text-gray-500 mt-1 font-bold tracking-widest">GOLD</span>
+                </div>
+              </div>
+              
+              <div className="text-emerald-400 font-bold text-sm flex items-center justify-center gap-2 mb-8">
+                <CheckCircle2 className="w-5 h-5" /> REWARD CLAIMED
+              </div>
+              
+              <button 
+                onClick={() => setQuestSuccess(null)}
+                className="w-full px-6 py-3 bg-[var(--primary)] hover:bg-opacity-80 rounded-lg font-bold text-white transition-colors shadow-[0_0_15px_rgba(138,43,226,0.4)]"
+              >
+                GOT IT
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
     </div>
   )
 }

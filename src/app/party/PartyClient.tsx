@@ -113,7 +113,7 @@ export default function PartyClient({
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center">
                     {user.avatars?.[0]?.avatar.imageUrl ? (
-                      <img src={user.avatars[0].avatar.imageUrl} alt={user.username} className="w-full h-full object-cover" />
+                      <span className="text-2xl">{user.avatars[0].avatar.imageUrl}</span>
                     ) : (
                       <span className="text-xl">👤</span>
                     )}
@@ -156,7 +156,7 @@ export default function PartyClient({
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-full bg-white/10 overflow-hidden flex items-center justify-center">
                       {req.sender.avatars?.[0]?.avatar.imageUrl ? (
-                        <img src={req.sender.avatars[0].avatar.imageUrl} alt={req.sender.username} className="w-full h-full object-cover" />
+                        <span className="text-2xl">{req.sender.avatars[0].avatar.imageUrl}</span>
                       ) : (
                         <span className="text-xl">👤</span>
                       )}
@@ -210,7 +210,7 @@ export default function PartyClient({
                   <div className="flex items-center gap-4 mb-6">
                     <div className="w-16 h-16 rounded-full bg-white/10 overflow-hidden flex items-center justify-center border-2 border-[var(--primary)]/50 group-hover:border-[var(--primary)] transition-colors">
                       {friend.avatars?.[0]?.avatar.imageUrl ? (
-                        <img src={friend.avatars[0].avatar.imageUrl} alt={friend.username} className="w-full h-full object-cover" />
+                        <span className="text-3xl">{friend.avatars[0].avatar.imageUrl}</span>
                       ) : (
                         <span className="text-2xl">👤</span>
                       )}

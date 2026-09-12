@@ -6,12 +6,12 @@ import { prisma } from "@/lib/prisma"
 
 export async function getUserSettings() {
   const session = await getServerSession(authOptions)
-  if (!session?.user?.email) {
+  if (!(session?.user as any)?.username) {
     return null
   }
   
   const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
+    where: { username: (session?.user as any)?.username },
     select: {
       masterVolume: true,
       uiVolume: true,
@@ -19,6 +19,7 @@ export async function getUserSettings() {
       rewardVolume: true,
       isMuted: true,
       reducedMotion: true,
+      locationOptIn: true,
     }
   })
   
@@ -32,14 +33,15 @@ export async function updateUserSettings(data: {
   rewardVolume?: number
   isMuted?: boolean
   reducedMotion?: boolean
+  locationOptIn?: boolean
 }) {
   const session = await getServerSession(authOptions)
-  if (!session?.user?.email) {
+  if (!(session?.user as any)?.username) {
     throw new Error("Unauthorized")
   }
   
   await prisma.user.update({
-    where: { email: session.user.email },
+    where: { username: (session?.user as any)?.username },
     data
   })
   

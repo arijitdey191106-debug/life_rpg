@@ -44,6 +44,14 @@ interface DashboardProps {
     rarity: string
     unlockedAt: string
   }[]
+  locationOptIn: boolean
+  nearbyPlayers: {
+    id: string
+    username: string
+    level: number
+    avatar: string
+    approxDistance: number
+  }[]
 }
 
 function AnimatedNumber({ value, duration = 1000 }: { value: number; duration?: number }) {

@@ -7,12 +7,12 @@ import { redirect } from "next/navigation";
 export default async function FocusPage() {
   const session = await getServerSession(authOptions);
   
-  if (!session?.user?.email) {
-    redirect("/auth/signin");
+  if (!(session?.user as any)?.username) {
+    redirect("/login");
   }
 
   const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
+    where: { username: (session?.user as any)?.username },
     include: {
       inventory: {
         where: { equipped: true },
@@ -22,7 +22,7 @@ export default async function FocusPage() {
   });
 
   if (!user) {
-    redirect("/auth/signin");
+    redirect("/login");
   }
 
   const equippedEffects = user.inventory

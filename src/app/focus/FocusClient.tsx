@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { startFocusSession, endFocusSession } from "@/app/actions/focus";
 import { useRouter } from "next/navigation";
+import { useAudio } from "@/components/AudioProvider";
 
 export default function FocusClient({ equippedEffects }: { equippedEffects: string[] }) {
   const [isActive, setIsActive] = useState(false);
@@ -15,38 +16,60 @@ export default function FocusClient({ equippedEffects }: { equippedEffects: stri
   const [rewardData, setRewardData] = useState<{xp: number, gold: number} | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [showEndEarlyModal, setShowEndEarlyModal] = useState(false);
+
   const router = useRouter();
+  const audio = useAudio();
 
   // Visibility tracking
   useEffect(() => {
-    if (!isActive || isPaused) return;
+    if (!isActive) return;
 
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        setInterruptions((prev) => prev + 1);
+    const handleInterruption = () => {
+      if (document.hidden || !document.hasFocus()) {
+        if (!showWarningModal && !showEndEarlyModal) {
+          setInterruptions((prev) => prev + 1);
+          setIsPaused(true);
+          setShowWarningModal(true);
+        }
       }
     };
 
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleInterruption);
+    window.addEventListener("blur", handleInterruption);
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleInterruption);
+      window.removeEventListener("blur", handleInterruption);
     };
-  }, [isActive, isPaused]);
+  }, [isActive, showWarningModal, showEndEarlyModal]);
 
   // Timer
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isActive && !isPaused) {
+    if (isActive && !isPaused && !showWarningModal && !showEndEarlyModal) {
       interval = setInterval(() => {
         setSecondsElapsed((prev) => prev + 1);
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isActive, isPaused]);
+  }, [isActive, isPaused, showWarningModal, showEndEarlyModal]);
+
+  // Auto end when time is up
+  useEffect(() => {
+     const totalSeconds = plannedDuration * 60;
+     if (isActive && secondsElapsed >= totalSeconds && !loading) {
+         handleEnd("COMPLETED", false);
+     }
+  }, [isActive, secondsElapsed, plannedDuration, loading]);
 
   const handleStart = async () => {
+    audio.playClick();
     setLoading(true);
     try {
+      document.documentElement.requestFullscreen().catch(err => {
+        console.error("Error attempting to enable fullscreen:", err);
+      });
       const res = await startFocusSession(plannedDuration);
       if (res.success) {
         setSessionId(res.sessionId);
@@ -54,6 +77,7 @@ export default function FocusClient({ equippedEffects }: { equippedEffects: stri
         setSecondsElapsed(0);
         setInterruptions(0);
         setRewardData(null);
+        setIsPaused(false);
       }
     } catch (error) {
       console.error(error);
@@ -61,16 +85,25 @@ export default function FocusClient({ equippedEffects }: { equippedEffects: stri
     setLoading(false);
   };
 
-  const handleEnd = async (status: "COMPLETED" | "ABORTED") => {
+  const handleEnd = async (status: "COMPLETED" | "ABORTED", abandoned: boolean = false) => {
     if (!sessionId) return;
+    audio.playClick();
     setLoading(true);
     try {
-      const res = await endFocusSession(sessionId, secondsElapsed, interruptions, status);
+      const res = await endFocusSession(sessionId, secondsElapsed, interruptions, status, abandoned);
       if (res.success) {
         setIsActive(false);
         setSessionId(null);
-        if (status === "COMPLETED") {
+        setShowWarningModal(false);
+        setShowEndEarlyModal(false);
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(err => console.error(err));
+        }
+        if (status === "COMPLETED" && !res.penaltyApplied) {
+          audio.playSuccess();
           setRewardData({ xp: res.xpReward, gold: res.goldReward });
+        } else {
+          setRewardData(null);
         }
       }
     } catch (error) {
@@ -88,6 +121,9 @@ export default function FocusClient({ equippedEffects }: { equippedEffects: stri
       document.exitFullscreen();
     }
   };
+
+  const totalSeconds = plannedDuration * 60;
+  const timeLeft = Math.max(0, totalSeconds - secondsElapsed);
 
   const formatTime = (totalSeconds: number) => {
     const m = Math.floor(totalSeconds / 60);
@@ -143,10 +179,10 @@ export default function FocusClient({ equippedEffects }: { equippedEffects: stri
           </div>
         )}
 
-        {isActive && (
+        {isActive && !showWarningModal && !showEndEarlyModal && (
           <div className="flex flex-col items-center w-full space-y-8">
             <div className="text-7xl font-light text-white tabular-nums tracking-tight">
-              {formatTime(secondsElapsed)}
+              {formatTime(timeLeft)}
             </div>
             
             <div className="flex flex-col items-center text-sm text-gray-400">
@@ -160,22 +196,69 @@ export default function FocusClient({ equippedEffects }: { equippedEffects: stri
               >
                 {isPaused ? "RESUME" : "PAUSE"}
               </button>
-              
-              <button 
-                onClick={() => handleEnd("COMPLETED")}
-                disabled={loading}
-                className="flex-1 bg-secondary hover:bg-opacity-80 text-white font-semibold py-3 px-4 rounded-lg transition-colors glow-border"
-              >
-                COMPLETE
-              </button>
             </div>
             
             <button 
-              onClick={() => handleEnd("ABORTED")}
+              onClick={() => {
+                setIsPaused(true);
+                setShowEndEarlyModal(true);
+              }}
               className="text-red-400 hover:text-red-300 text-sm mt-4 transition-colors"
             >
-              ABORT SESSION
+              END EARLY
             </button>
+          </div>
+        )}
+
+        {showWarningModal && (
+          <div className="flex flex-col items-center w-full space-y-6 text-center">
+            <h2 className="text-xl font-bold text-red-500">FOCUS INTERRUPTED</h2>
+            <p className="text-gray-300">Leaving will end your session and apply an early-exit penalty.</p>
+            <div className="flex w-full space-x-4">
+              <button 
+                onClick={() => {
+                  setShowWarningModal(false);
+                  setIsPaused(false);
+                }}
+                disabled={loading}
+                className="flex-1 bg-primary hover:bg-opacity-80 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+              >
+                RETURN TO FOCUS
+              </button>
+              <button 
+                onClick={() => handleEnd("ABORTED", true)}
+                disabled={loading}
+                className="flex-1 bg-surface border border-red-500 text-red-500 hover:bg-red-500/10 font-semibold py-3 px-4 rounded-lg transition-colors"
+              >
+                END FOCUS
+              </button>
+            </div>
+          </div>
+        )}
+
+        {showEndEarlyModal && (
+          <div className="flex flex-col items-center w-full space-y-6 text-center">
+            <h2 className="text-xl font-bold text-red-500">END EARLY?</h2>
+            <p className="text-gray-300">Ending now will apply an XP penalty and you will lose any completion rewards.</p>
+            <div className="flex w-full space-x-4">
+              <button 
+                onClick={() => {
+                  setShowEndEarlyModal(false);
+                  setIsPaused(false);
+                }}
+                disabled={loading}
+                className="flex-1 bg-surface border border-gray-700 hover:border-gray-500 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+              >
+                CANCEL
+              </button>
+              <button 
+                onClick={() => handleEnd("ABORTED", true)}
+                disabled={loading}
+                className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+              >
+                CONFIRM END EARLY
+              </button>
+            </div>
           </div>
         )}
 

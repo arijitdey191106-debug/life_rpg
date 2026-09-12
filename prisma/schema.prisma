@@ -53,11 +53,20 @@ model User {
   avatars            UserAvatar[]
   skills             UserSkill[]
   
-  // Social
+  // Social & Location
   friendships      Friendship[]    @relation("UserFriendships")
   friendOf         Friendship[]    @relation("UserFriendOf")
   sentRequests     FriendRequest[] @relation("SentRequests")
   receivedRequests FriendRequest[] @relation("ReceivedRequests")
+  locationOptIn    Boolean         @default(false)
+  approxLat        Float?
+  approxLng        Float?
+
+  // Duels & Transactions
+  duelsChallenged  Duel[]              @relation("DuelChallenger")
+  duelsDefended    Duel[]              @relation("DuelDefender")
+  duelsWon         Duel[]              @relation("DuelWinner")
+  rewardTransactions RewardTransaction[]
 }
 
 model Quest {
@@ -71,6 +80,7 @@ model Quest {
   xpReward          Int
   goldReward        Int
   status            String    @default("PENDING") // PENDING, COMPLETED
+  type              String    @default("PERSONAL") // PERSONAL, SYSTEM
   dueDate           DateTime?
   isRecurring       Boolean   @default(false)
   recurringInterval String? // DAILY, WEEKLY, MONTHLY
@@ -255,4 +265,43 @@ model UserSkill {
   skillNode SkillNode @relation(fields: [skillNodeId], references: [id], onDelete: Cascade)
 
   @@unique([userId, skillNodeId])
+}
+
+model RewardTransaction {
+  id          String   @id @default(cuid())
+  userId      String
+  sourceId    String   // The Quest, Challenge, or Duel ID
+  sourceType  String   // QUEST, SYSTEM_CHALLENGE, DUEL
+  xpGranted   Int      @default(0)
+  goldGranted Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceId, sourceType])
+}
+
+model Duel {
+  id             String   @id @default(cuid())
+  challengerId   String
+  defenderId     String
+  objectiveType  String   // FOCUS, MEDITATION, STRENGTH, INTELLECT
+  wager          Int      @default(0)
+  status         String   @default("PENDING") // PENDING, ACCEPTED, DECLINED, COMPLETED
+  winnerId       String?
+  createdAt      DateTime @default(now())
+  completedAt    DateTime?
+
+  challenger User  @relation("DuelChallenger", fields: [challengerId], references: [id], onDelete: Cascade)
+  defender   User  @relation("DuelDefender", fields: [defenderId], references: [id], onDelete: Cascade)
+  winner     User? @relation("DuelWinner", fields: [winnerId], references: [id])
+}
+
+model WorldLocation {
+  id               String @id @default(cuid())
+  name             String
+  description      String
+  unlockLevel      Int    @default(1)
+  relatedAttribute String? // INTELLECT, STRENGTH, etc.
+  visualType       String // CITY, GYM, ACADEMY, ARENA, FOREST, TEMPLE
 }

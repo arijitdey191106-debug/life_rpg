@@ -6,6 +6,8 @@ import RemoveFriendButton from "./RemoveFriendButton"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 
+import { calculateLevelProgress } from "@/lib/rpgEngine"
+
 export async function generateMetadata({ params }: { params: { username: string } }): Promise<Metadata> {
   return {
     title: `${params.username}'s Profile - Life RPG`,
@@ -51,9 +53,8 @@ export default async function FriendProfilePage({ params }: { params: { username
     notFound()
   }
 
-  // Calculate XP progress
-  const nextLevelXp = user.level * 1000 // Simple formula for example
-  const xpProgress = Math.min(100, Math.max(0, (user.xp / nextLevelXp) * 100))
+  // Calculate XP progress using the official RPG Engine
+  const { currentLevelXp, nextLevelXp, progressPercent } = calculateLevelProgress(user.xp)
 
   // Determine cosmetics
   const backgroundItem = user.inventory.find(i => i.item.type === 'BACKGROUND')?.item
@@ -131,7 +132,7 @@ export default async function FriendProfilePage({ params }: { params: { username
             <div className="mt-6 w-full max-w-md bg-black/50 rounded-full h-4 overflow-hidden border border-white/10">
               <div 
                 className="h-full bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] transition-all duration-1000"
-                style={{ width: `${xpProgress}%` }}
+                style={{ width: `${progressPercent}%` }}
               />
             </div>
             <p className="text-xs text-white/50 mt-2">{user.xp} / {nextLevelXp} XP</p>

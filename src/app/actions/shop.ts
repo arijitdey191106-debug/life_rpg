@@ -73,14 +73,23 @@ export async function purchaseItem(itemId: string) {
       return { success: false, error: "Item already owned" }
     }
 
-    // Check user gold
+    // Check user level and gold
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { gold: true }
+      select: { gold: true, level: true }
     })
 
     if (!user || user.gold < item.cost) {
       return { success: false, error: "Not enough gold" }
+    }
+
+    // Parse [UNLOCK_LEVEL:X] from item description
+    const unlockLevelMatch = item.description.match(/\[UNLOCK_LEVEL:(\d+)\]/i);
+    if (unlockLevelMatch) {
+      const requiredLevel = parseInt(unlockLevelMatch[1], 10);
+      if (user.level < requiredLevel) {
+        return { success: false, error: `Requires Level ${requiredLevel}` };
+      }
     }
 
     // Transaction

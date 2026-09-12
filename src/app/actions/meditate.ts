@@ -10,10 +10,10 @@ const MEDITATE_GOLD_PER_MINUTE = 0.5;
 
 export async function startMeditationSession(mode: string, duration: number) {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.email) throw new Error("Unauthorized");
+  if (!(session?.user as any)?.username) throw new Error("Unauthorized");
 
   const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
+    where: { username: (session?.user as any)?.username },
   });
   if (!user) throw new Error("User not found");
 
@@ -33,10 +33,10 @@ export async function endMeditationSession(
   completed: boolean
 ) {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.email) throw new Error("Unauthorized");
+  if (!(session?.user as any)?.username) throw new Error("Unauthorized");
 
   const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
+    where: { username: (session?.user as any)?.username },
   });
   if (!user) throw new Error("User not found");
 
@@ -60,18 +60,23 @@ export async function endMeditationSession(
   
   const plannedDurationSeconds = meditateSession.duration * 60;
   
-  // They only get rewards if they actually meditated for at least 80% of the time,
-  // or if they just "completed" it based on the client, we check server time
-  const isValid = completed && serverElapsedSeconds >= (plannedDurationSeconds * 0.8);
+  // They only get rewards if they actually meditated for the full time
+  // allow 10 seconds leeway for network delay
+  const isValid = completed && serverElapsedSeconds >= (plannedDurationSeconds - 10);
 
   if (isValid) {
     xpReward = meditateSession.duration * MEDITATE_XP_PER_MINUTE;
     goldReward = Math.floor(meditateSession.duration * MEDITATE_GOLD_PER_MINUTE);
 
+    const { calculateLevelProgress } = require("@/lib/rpgEngine");
+    const newXp = user.xp + xpReward;
+    const levelProgress = calculateLevelProgress(newXp);
+
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        xp: { increment: xpReward },
+        xp: newXp,
+        level: levelProgress.currentLevel,
         gold: { increment: goldReward },
         focus: { increment: Math.floor(xpReward / 10) }, 
       },

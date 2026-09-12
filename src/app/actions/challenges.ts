@@ -83,13 +83,10 @@ export async function getUserChallenges() {
   if (!session?.user?.id) return { error: "Unauthorized" };
 
   const userId = session.user.id;
-
-  // Ensure system challenges exist
   await initializeSystemChallenges();
 
   const allSystemChallenges = await prisma.systemChallenge.findMany();
 
-  // Create UserChallenge entries if they don't exist
   for (const challenge of allSystemChallenges) {
     await prisma.userChallenge.upsert({
       where: {
@@ -108,7 +105,6 @@ export async function getUserChallenges() {
     });
   }
 
-  // Fetch updated user challenges with related system challenge
   const userChallenges = await prisma.userChallenge.findMany({
     where: { userId },
     include: { challenge: true },
@@ -117,10 +113,59 @@ export async function getUserChallenges() {
   return { userChallenges };
 }
 
-export async function claimChallengeReward(userChallengeId: string) {
+export async function startChallenge(userChallengeId: string) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return { error: "Unauthorized" };
 
+  const userChallenge = await prisma.userChallenge.findUnique({
+    where: { id: userChallengeId },
+  });
+
+  if (!userChallenge || userChallenge.userId !== session.user.id) {
+    return { error: "Not found or unauthorized" };
+  }
+
+  if (userChallenge.status !== "AVAILABLE") {
+    return { error: "Invalid state transition" };
+  }
+
+  await prisma.userChallenge.update({
+    where: { id: userChallengeId },
+    data: { status: "IN_PROGRESS" },
+  });
+
+  revalidatePath("/quests");
+  return { success: true };
+}
+
+export async function reportChallengeObjectiveMet(userChallengeId: string) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) return { error: "Unauthorized" };
+
+  const userChallenge = await prisma.userChallenge.findUnique({
+    where: { id: userChallengeId },
+  });
+
+  if (!userChallenge || userChallenge.userId !== session.user.id) {
+    return { error: "Not found or unauthorized" };
+  }
+
+  if (userChallenge.status !== "IN_PROGRESS") {
+    return { error: "Invalid state transition" };
+  }
+
+  await prisma.userChallenge.update({
+    where: { id: userChallengeId },
+    data: { status: "OBJECTIVE_MET" },
+  });
+
+  revalidatePath("/quests");
+  return { success: true };
+}
+
+export async function verifyChallenge(userChallengeId: string) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) return { error: "Unauthorized" };
   const userId = session.user.id;
 
   const userChallenge = await prisma.userChallenge.findUnique({
@@ -129,53 +174,117 @@ export async function claimChallengeReward(userChallengeId: string) {
   });
 
   if (!userChallenge || userChallenge.userId !== userId) {
-    return { error: "Challenge not found or not owned by user." };
+    return { error: "Not found or unauthorized" };
   }
 
-  if (userChallenge.status === "COMPLETED") {
-    return { error: "Challenge already completed." };
+  if (userChallenge.status !== "OBJECTIVE_MET") {
+    return { error: "Invalid state transition. Must be OBJECTIVE_MET." };
   }
 
-  // In a real app, you would validate the progress here.
-  // For the sake of this milestone, we'll assume the client correctly identified it as complete.
-  // Or at least allow claiming for now. We can mock it by just trusting the claim call if it has the required progress.
-  // Actually, wait, let's implement basic validation.
-  
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return { error: "User not found" };
 
   let isCompleted = false;
+  let required = 0;
+  let current = 0;
+  let noun = "units";
+  
+  const challengeKey = userChallenge.challenge.key;
 
-  if (userChallenge.challenge.type === "MILESTONE") {
-      if (userChallenge.challenge.key === "reach_level_5" && user.level >= 5) {
-          isCompleted = true;
-      }
-      // For quest counts, we could check the database.
-      if (userChallenge.challenge.key === "intellect_quests_10") {
-          const count = await prisma.quest.count({ where: { userId, category: "INTELLECT", status: "COMPLETED" }});
-          if (count >= 10) isCompleted = true;
-      }
-      if (userChallenge.challenge.key === "strength_quests_10") {
-          const count = await prisma.quest.count({ where: { userId, category: "STRENGTH", status: "COMPLETED" }});
-          if (count >= 10) isCompleted = true;
-      }
-  } else {
-      // Mock daily/weekly completion for testing
-      isCompleted = true; // Let's allow claiming for demo purposes
+  if (challengeKey === "reach_level_5") {
+    required = 5;
+    current = user.level;
+    noun = "Levels";
+    if (user.level >= 5) isCompleted = true;
+  } else if (challengeKey === "intellect_quests_10") {
+    required = 10;
+    noun = "Intellect Quests";
+    current = await prisma.quest.count({ 
+      where: { userId, category: "INTELLECT", status: "CLAIMED" }
+    });
+    if (current >= 10) isCompleted = true;
+  } else if (challengeKey === "strength_quests_10") {
+    required = 10;
+    noun = "Strength Quests";
+    current = await prisma.quest.count({ 
+      where: { userId, category: "STRENGTH", status: "CLAIMED" }
+    });
+    if (current >= 10) isCompleted = true;
+  } else if (challengeKey === "daily_task_master") {
+    required = 3;
+    noun = "Daily Quests";
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    current = await prisma.quest.count({
+      where: { userId, status: "CLAIMED", completedAt: { gte: today } }
+    });
+    if (current >= 3) isCompleted = true;
+  } else if (challengeKey === "weekly_champion") {
+    required = 15;
+    noun = "Weekly Quests";
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    current = await prisma.quest.count({
+      where: { userId, status: "CLAIMED", completedAt: { gte: weekAgo } }
+    });
+    if (current >= 15) isCompleted = true;
   }
 
   if (!isCompleted) {
-       // Just claim it for the sake of demonstration if validation isn't strict,
-       // but in a strict scenario we return an error:
-       // return { error: "Challenge requirements not met." };
-       isCompleted = true;
+    return { 
+      error: "OBJECTIVE_NOT_MET", 
+      details: {
+        questName: userChallenge.challenge.name,
+        description: userChallenge.challenge.description,
+        required,
+        current,
+        remaining: Math.max(0, required - current),
+        noun
+      }
+    };
   }
 
-  if (isCompleted) {
+  await prisma.userChallenge.update({
+    where: { id: userChallengeId },
+    data: { status: "VERIFIED" },
+  });
+
+  revalidatePath("/quests");
+  return { success: true };
+}
+
+export async function claimChallengeReward(userChallengeId: string) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) return { error: "Unauthorized" };
+  const userId = session.user.id;
+
+  const userChallenge = await prisma.userChallenge.findUnique({
+    where: { id: userChallengeId },
+    include: { challenge: true },
+  });
+
+  if (!userChallenge || userChallenge.userId !== userId) {
+    return { error: "Not found or unauthorized" };
+  }
+
+  if (userChallenge.status !== "VERIFIED") {
+    return { error: "Challenge must be VERIFIED before claiming." };
+  }
+
+  try {
     await prisma.$transaction([
+      prisma.rewardTransaction.create({
+        data: { 
+          userId, 
+          sourceId: userChallenge.challengeId, 
+          sourceType: "CHALLENGE", 
+          xpGranted: userChallenge.challenge.xpReward, 
+          goldGranted: userChallenge.challenge.goldReward 
+        }
+      }),
       prisma.userChallenge.update({
         where: { id: userChallengeId },
-        data: { status: "COMPLETED", completedAt: new Date() },
+        data: { status: "CLAIMED", completedAt: new Date() },
       }),
       prisma.user.update({
         where: { id: userId },
@@ -185,8 +294,14 @@ export async function claimChallengeReward(userChallengeId: string) {
         },
       }),
     ]);
-
-    revalidatePath("/quests");
-    return { success: true };
+  } catch (error: any) {
+    // Unique constraint on RewardTransaction will prevent double claiming
+    if (error.code === 'P2002') {
+      return { error: "Reward already claimed." };
+    }
+    throw error;
   }
+
+  revalidatePath("/quests");
+  return { success: true };
 }

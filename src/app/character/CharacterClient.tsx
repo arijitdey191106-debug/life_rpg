@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Shield, Flame, Coins, Star, Swords, Trophy, Calendar, TrendingUp, X } from "lucide-react"
 import { equipAvatar } from "@/actions/character"
 import { useAudio } from "@/components/AudioProvider"
+import AvatarSprite from "@/components/AvatarSprite"
 
 interface CharacterProps {
   username: string
@@ -87,46 +88,35 @@ export default function CharacterClient(props: CharacterProps) {
         <p className="text-gray-400">Your complete profile and power analysis.</p>
       </motion.header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* Avatar & Core Identity */}
-        <motion.div variants={stagger.item} className="glass-panel p-8 relative overflow-hidden flex flex-col items-center justify-center min-h-[420px]">
+        {/* Player Character */}
+        <motion.div variants={stagger.item} className="glass-panel p-8 relative overflow-hidden flex flex-col items-center justify-center lg:col-span-8 min-h-[420px]">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(138,43,226,0.15)_0%,transparent_70%)]" aria-hidden="true" />
+          <h3 className="absolute top-4 left-4 text-xs font-bold tracking-widest text-white/50 uppercase">Player Character</h3>
           
-          {/* Avatar */}
-          <div className="relative mb-6 cursor-pointer group" onClick={() => { audio.playClick(); setIsAvatarModalOpen(true) }}>
+          <div className="relative mb-6">
             <motion.div 
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ delay: 0.3, duration: 0.6, type: "spring" }}
-              className={`relative w-36 h-36 rounded-full border-2 border-white/10 flex items-center justify-center bg-black/50 overflow-hidden ${equippedFrame ? '' : 'pulse-glow'} group-hover:border-primary/50 transition-colors`}
+              className={`relative flex items-center justify-center z-10`}
             >
-              <span className="text-6xl" role="img" aria-label="Avatar">{props.currentAvatar}</span>
-              
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                <span className="text-xs font-bold uppercase tracking-widest text-white">Change</span>
-              </div>
+              <AvatarSprite equippedItems={props.equippedItems} size={200} className="z-10 drop-shadow-[0_0_15px_rgba(138,43,226,0.3)]" />
             </motion.div>
-            
-            {/* Render Frame if equipped */}
-            {equippedFrame && equippedFrame.name.includes("VOID") && (
-              <svg className="absolute -inset-4 w-[115%] h-[115%] -left-[7.5%] -top-[7.5%] pointer-events-none animate-[spin_10s_linear_infinite]" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="48" fill="none" stroke="var(--primary)" strokeWidth="1" strokeDasharray="4 4" className="opacity-50" />
-                <circle cx="50" cy="50" r="45" fill="none" stroke="var(--secondary)" strokeWidth="0.5" strokeDasharray="10 5" />
-              </svg>
-            )}
-
-            {/* Level badge */}
-            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-primary text-white text-xs font-bold px-3 py-1 rounded-full border border-primary/50 shadow-lg shadow-primary/20 z-10">
-              LVL {props.level}
-            </div>
           </div>
           
           <h2 className="text-3xl font-bold tracking-widest">{props.username}</h2>
           <div className="text-primary font-mono mt-1 uppercase tracking-[0.3em] text-sm">Level {props.level} Operator</div>
           
+          <div className="mt-4 z-10">
+            <a href="/shop" className="px-6 py-2 bg-[var(--primary)]/20 text-[var(--primary)] border border-[var(--primary)]/50 rounded-lg text-sm font-bold uppercase tracking-widest hover:bg-[var(--primary)] hover:text-white transition-all shadow-[0_0_15px_rgba(138,43,226,0.3)] flex items-center gap-2">
+              <span>OUTFIT SHOP</span>
+            </a>
+          </div>
+          
           {/* XP Progress */}
-          <div className="w-full max-w-xs mt-6 space-y-1.5 z-10">
+          <div className="w-full max-w-md mt-6 space-y-1.5 z-10">
             <div className="flex justify-between text-xs text-gray-400">
               <span>XP Progress</span>
               <span className="font-mono">{props.currentLevelXp} / {props.nextLevelXp}</span>
@@ -140,73 +130,103 @@ export default function CharacterClient(props: CharacterProps) {
               />
             </div>
           </div>
-
-          {/* Core Stats Row */}
-          <div className="flex gap-6 mt-8 w-full max-w-sm text-center border-t border-white/10 pt-6 z-10">
-            <div className="flex-1">
-              <div className="flex items-center justify-center gap-1 text-xs text-gray-500 uppercase mb-1">
-                <Star className="w-3 h-3" /> XP
-              </div>
-              <div className="text-xl font-mono text-white">{props.totalXp.toLocaleString()}</div>
-            </div>
-            <div className="flex-1 border-l border-r border-white/10">
-              <div className="flex items-center justify-center gap-1 text-xs text-gray-500 uppercase mb-1">
-                <Coins className="w-3 h-3" /> Gold
-              </div>
-              <div className="text-xl font-mono text-yellow-400">{props.gold.toLocaleString()}</div>
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-center gap-1 text-xs text-gray-500 uppercase mb-1">
-                <Flame className="w-3 h-3" /> Streak
-              </div>
-              <div className="text-xl font-mono text-orange-400">{props.currentStreak}</div>
-            </div>
-          </div>
         </motion.div>
 
-        {/* Attribute Visualizer */}
-        <motion.div variants={stagger.item} className="glass-panel p-8">
-          <h3 className="text-xl font-bold tracking-widest mb-2 text-center flex items-center justify-center gap-2">
-            <TrendingUp className="w-5 h-5 text-primary" />
-            ATTRIBUTES
-          </h3>
-          <p className="text-xs text-gray-500 text-center mb-8 tracking-wider">
-            TOTAL POWER: <span className="text-white font-mono">{totalAttrPoints}</span>
-          </p>
-          
-          <div className="space-y-5">
-            {attributes.map((attr, i) => {
-              const percentage = Math.min(100, Math.max(3, (attr.value / maxAttr) * 100))
-              return (
-                <motion.div 
-                  key={attr.name} 
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.4 + i * 0.1, duration: 0.4 }}
-                >
-                  <div className="flex justify-between text-sm mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold tracking-wider uppercase text-xs" style={{ color: attr.color }}>{attr.name}</span>
-                      <span className="text-[10px] text-gray-600 hidden sm:inline">{attr.desc}</span>
+        <div className="lg:col-span-4 flex flex-col gap-6">
+          {/* Social Profile */}
+          <motion.div variants={stagger.item} className="glass-panel p-6 flex flex-col items-center text-center relative">
+            <h3 className="absolute top-4 left-4 text-xs font-bold tracking-widest text-white/50 uppercase">Social Profile</h3>
+            
+            <div className="mt-4 relative cursor-pointer group" onMouseEnter={() => audio.playHover()} onClick={() => { audio.playClick(); setIsAvatarModalOpen(true) }}>
+              <motion.div 
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.3, duration: 0.6, type: "spring" }}
+                className={`relative w-24 h-24 rounded-full border-2 border-white/10 flex items-center justify-center bg-black/50 overflow-hidden ${equippedFrame ? '' : 'pulse-glow'} group-hover:border-primary/50 transition-colors z-10`}
+              >
+                <span className="text-5xl">{props.avatars.find(a => a.id === props.currentAvatar)?.imageUrl || '👱‍♂️'}</span>
+                
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-50">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-white">Change</span>
+                </div>
+              </motion.div>
+              
+              {/* Render Frame if equipped */}
+              {equippedFrame && equippedFrame.name.includes("VOID") && (
+                <svg className="absolute -inset-4 w-[115%] h-[115%] -left-[7.5%] -top-[7.5%] pointer-events-none animate-[spin_10s_linear_infinite] z-20" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="48" fill="none" stroke="var(--primary)" strokeWidth="1" strokeDasharray="4 4" className="opacity-50" />
+                  <circle cx="50" cy="50" r="45" fill="none" stroke="var(--secondary)" strokeWidth="0.5" strokeDasharray="10 5" />
+                </svg>
+              )}
+              {equippedFrame && !equippedFrame.name.includes("VOID") && (
+                 <div className="absolute -inset-2 rounded-full border-4 border-yellow-500/50 pointer-events-none z-20 shadow-[0_0_15px_rgba(234,179,8,0.5)]"></div>
+              )}
+
+              {/* Level badge */}
+              <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-primary text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-primary/50 shadow-lg shadow-primary/20 z-10">
+                LVL {props.level}
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col gap-2 w-full text-center border-t border-white/10 pt-4">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-500 uppercase text-xs flex items-center gap-1"><Star className="w-3 h-3"/> Total XP</span>
+                <span className="font-mono text-white">{props.totalXp.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-500 uppercase text-xs flex items-center gap-1"><Coins className="w-3 h-3"/> Gold</span>
+                <span className="font-mono text-yellow-400">{props.gold.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-500 uppercase text-xs flex items-center gap-1"><Flame className="w-3 h-3"/> Streak</span>
+                <span className="font-mono text-orange-400">{props.currentStreak}</span>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Attribute Visualizer */}
+          <motion.div variants={stagger.item} className="glass-panel p-6 flex-1">
+            <h3 className="text-lg font-bold tracking-widest mb-2 text-center flex items-center justify-center gap-2">
+              <TrendingUp className="w-4 h-4 text-primary" />
+              ATTRIBUTES
+            </h3>
+            <p className="text-xs text-gray-500 text-center mb-6 tracking-wider">
+              TOTAL POWER: <span className="text-white font-mono">{totalAttrPoints}</span>
+            </p>
+            
+            <div className="space-y-4">
+              {attributes.map((attr, i) => {
+                const percentage = Math.min(100, Math.max(3, (attr.value / maxAttr) * 100))
+                return (
+                  <motion.div 
+                    key={attr.name} 
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.4 + i * 0.1, duration: 0.4 }}
+                  >
+                    <div className="flex justify-between text-xs mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold tracking-wider uppercase" style={{ color: attr.color }}>{attr.name}</span>
+                      </div>
+                      <span className="font-mono font-bold text-sm" style={{ color: attr.color }}>{attr.value}</span>
                     </div>
-                    <span className="font-mono font-bold text-lg" style={{ color: attr.color }}>{attr.value}</span>
-                  </div>
-                  <div className="h-3 bg-white/5 rounded-sm overflow-hidden">
-                    <motion.div 
-                      className="h-full relative"
-                      style={{ backgroundColor: attr.color }}
-                      initial={{ width: 0 }}
-                      animate={{ width: `${percentage}%` }}
-                      transition={{ duration: 0.8, ease: "easeOut", delay: 0.5 + i * 0.1 }}
-                    >
-                      <div className="absolute inset-0 bg-white/20 animate-[pulse_3s_ease-in-out_infinite]" aria-hidden="true" />
-                    </motion.div>
-                  </div>
-                </motion.div>
-              )
-            })}
-          </div>
-        </motion.div>
+                    <div className="h-2 bg-white/5 rounded-sm overflow-hidden">
+                      <motion.div 
+                        className="h-full relative"
+                        style={{ backgroundColor: attr.color }}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${percentage}%` }}
+                        transition={{ duration: 0.8, ease: "easeOut", delay: 0.5 + i * 0.1 }}
+                      >
+                        <div className="absolute inset-0 bg-white/20 animate-[pulse_3s_ease-in-out_infinite]" aria-hidden="true" />
+                      </motion.div>
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+          </motion.div>
+        </div>
       </div>
 
       {/* Skill Tree Visualizer */}
@@ -299,6 +319,7 @@ export default function CharacterClient(props: CharacterProps) {
                   return (
                     <button
                       key={avatar.id}
+                      onMouseEnter={() => audio.playHover()}
                       onClick={() => {
                         if (isUnlocked) {
                           audio.playClick()

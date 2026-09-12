@@ -11,10 +11,10 @@ const DAILY_XP_CAP = 1000;
 
 export async function startFocusSession(plannedDuration: number) {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.email) throw new Error("Unauthorized");
+  if (!(session?.user as any)?.username) throw new Error("Unauthorized");
 
   const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
+    where: { username: (session?.user as any)?.username },
   });
   if (!user) throw new Error("User not found");
 
@@ -33,13 +33,14 @@ export async function endFocusSession(
   sessionId: string,
   clientActiveSeconds: number,
   interruptionCount: number,
-  status: "COMPLETED" | "ABORTED"
+  status: "COMPLETED" | "ABORTED",
+  abandoned: boolean = false
 ) {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.email) throw new Error("Unauthorized");
+  if (!(session?.user as any)?.username) throw new Error("Unauthorized");
 
   const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
+    where: { username: (session?.user as any)?.username },
   });
   if (!user) throw new Error("User not found");
 
@@ -59,29 +60,53 @@ export async function endFocusSession(
   const serverElapsedSeconds = Math.floor((now.getTime() - focusSession.startedAt.getTime()) / 1000);
   
   // Validate active seconds
-  const validActiveSeconds = Math.min(clientActiveSeconds, serverElapsedSeconds);
+  const INTERRUPTION_PENALTY_SECONDS = 60;
+  let validActiveSeconds = Math.min(clientActiveSeconds, serverElapsedSeconds);
+  validActiveSeconds = Math.max(0, validActiveSeconds - (interruptionCount * INTERRUPTION_PENALTY_SECONDS));
   const validMinutes = Math.floor(validActiveSeconds / 60);
+  const plannedSeconds = focusSession.plannedDuration * 60;
 
   let xpReward = 0;
   let goldReward = 0;
-  
-  // Calculate daily XP to enforce cap
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  let penaltyApplied = false;
 
-  const todaysSessions = await prisma.focusSession.findMany({
-    where: {
-      userId: user.id,
-      createdAt: { gte: today },
-      rewardGranted: true,
-    },
-  });
+  const isInsufficientDuration = validActiveSeconds < plannedSeconds * 0.9;
 
-  const xpEarnedToday = todaysSessions.reduce((acc, curr) => {
-    return acc + Math.floor(curr.validActiveDuration / 60) * FOCUS_XP_PER_MINUTE;
-  }, 0);
+  if (!abandoned && isInsufficientDuration) {
+    throw new Error("Required duration not met. Must abandon to end early.");
+  }
 
-  if (status === "COMPLETED" && validMinutes > 0) {
+  if (abandoned || isInsufficientDuration) {
+    // Penalty
+    penaltyApplied = true;
+    const { calculateLevelProgress } = require("@/lib/rpgEngine");
+    const newXp = Math.max(0, user.xp - 25);
+    const levelProgress = calculateLevelProgress(newXp);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        xp: newXp,
+        level: levelProgress.currentLevel,
+      },
+    });
+  } else if (status === "COMPLETED" && validMinutes > 0) {
+    // Calculate daily XP to enforce cap
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const todaysSessions = await prisma.focusSession.findMany({
+      where: {
+        userId: user.id,
+        createdAt: { gte: today },
+        rewardGranted: true,
+      },
+    });
+
+    const xpEarnedToday = todaysSessions.reduce((acc, curr) => {
+      return acc + Math.floor(curr.validActiveDuration / 60) * FOCUS_XP_PER_MINUTE;
+    }, 0);
+
     let rawXp = validMinutes * FOCUS_XP_PER_MINUTE;
     
     if (xpEarnedToday + rawXp > DAILY_XP_CAP) {
@@ -92,10 +117,15 @@ export async function endFocusSession(
     
     goldReward = Math.floor(validMinutes * FOCUS_GOLD_PER_MINUTE);
 
+    const { calculateLevelProgress } = require("@/lib/rpgEngine");
+    const newXp = user.xp + xpReward;
+    const levelProgress = calculateLevelProgress(newXp);
+
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        xp: { increment: xpReward },
+        xp: newXp,
+        level: levelProgress.currentLevel,
         gold: { increment: goldReward },
         focus: { increment: Math.floor(xpReward / 10) }, // tiny attribute boost
       },
@@ -106,15 +136,15 @@ export async function endFocusSession(
     where: { id: sessionId },
     data: {
       endedAt: now,
-      status,
+      status: abandoned ? "ABORTED" : status,
       validActiveDuration: validActiveSeconds,
-      interruptionCount,
-      rewardGranted: status === "COMPLETED" && validMinutes > 0,
+      interruptionCount: interruptionCount,
+      rewardGranted: !penaltyApplied && status === "COMPLETED",
     },
   });
 
   revalidatePath("/focus");
   revalidatePath("/dashboard"); // Assuming there's a dashboard
 
-  return { success: true, xpReward, goldReward, validMinutes };
+  return { success: true, xpReward, goldReward, validMinutes, penaltyApplied };
 }

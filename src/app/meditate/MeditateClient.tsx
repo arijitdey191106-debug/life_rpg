@@ -3,21 +3,22 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { startMeditationSession, endMeditationSession } from "@/app/actions/meditate";
+import { useAudio } from "@/components/AudioProvider";
+import DeepSpaceEnv from "./environments/DeepSpaceEnv";
+import RainEnv from "./environments/RainEnv";
+import ForestEnv from "./environments/ForestEnv";
+import EmberEnv from "./environments/EmberEnv";
+import OceanEnv from "./environments/OceanEnv";
+import NightEnv from "./environments/NightEnv";
 
-const MODES = ["BREATHING", "MINDFULNESS", "DEEP_CALM", "SLEEP"];
-const DURATIONS = [5, 10, 15, 20, 30];
+const SOUNDSCAPES = ["DEEP SPACE", "RAIN", "FOREST", "EMBER", "OCEAN", "NIGHT"];
+const DURATIONS = [3, 5, 10, 15, 20, 30];
 
-// Ambient audio mapping
-const AUDIO_SOURCES: Record<string, string> = {
-  BREATHING: "https://cdn.pixabay.com/download/audio/2022/11/22/audio_d1718ab025.mp3?filename=ambient-piano-amp-strings-10711.mp3",
-  MINDFULNESS: "https://cdn.pixabay.com/download/audio/2022/01/18/audio_965005b63b.mp3?filename=relaxing-mountains-rivers-streams-10667.mp3",
-  DEEP_CALM: "https://cdn.pixabay.com/download/audio/2022/05/16/audio_29cc040c77.mp3?filename=ambient-classical-guitar-11116.mp3",
-  SLEEP: "https://cdn.pixabay.com/download/audio/2021/11/24/audio_34b3e64fc5.mp3?filename=night-ambience-17064.mp3"
-};
+
 
 export default function MeditateClient({ equippedEffects }: { equippedEffects: string[] }) {
-  const [selectedMode, setSelectedMode] = useState(MODES[0]);
-  const [selectedDuration, setSelectedDuration] = useState(DURATIONS[0]); // minutes
+  const [selectedMode, setSelectedMode] = useState(SOUNDSCAPES[0]);
+  const [selectedDuration, setSelectedDuration] = useState(DURATIONS[1]); // minutes
   
   const [isActive, setIsActive] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -25,7 +26,7 @@ export default function MeditateClient({ equippedEffects }: { equippedEffects: s
   const [rewardData, setRewardData] = useState<{xp: number, gold: number} | null>(null);
   const [loading, setLoading] = useState(false);
   
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audio = useAudio();
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -41,15 +42,15 @@ export default function MeditateClient({ equippedEffects }: { equippedEffects: s
 
   // Audio control
   useEffect(() => {
-    if (isActive && audioRef.current) {
-      audioRef.current.play().catch(e => console.error("Audio play failed", e));
-    } else if (!isActive && audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+    if (isActive) {
+      audio.playMeditationTrack(selectedMode);
+    } else {
+      audio.stopMeditationTrack();
     }
-  }, [isActive, selectedMode]);
+  }, [isActive, selectedMode, audio]);
 
   const handleStart = async () => {
+    audio.playClick();
     setLoading(true);
     try {
       const res = await startMeditationSession(selectedMode, selectedDuration);
@@ -67,6 +68,7 @@ export default function MeditateClient({ equippedEffects }: { equippedEffects: s
 
   const handleEnd = async (completed: boolean) => {
     if (!sessionId) return;
+    audio.playClick();
     setLoading(true);
     try {
       const res = await endMeditationSession(sessionId, completed);
@@ -74,6 +76,7 @@ export default function MeditateClient({ equippedEffects }: { equippedEffects: s
         setIsActive(false);
         setSessionId(null);
         if (completed && res.xpReward > 0) {
+          audio.playSuccess();
           setRewardData({ xp: res.xpReward, gold: res.goldReward });
         }
       }
@@ -112,15 +115,42 @@ export default function MeditateClient({ equippedEffects }: { equippedEffects: s
         </div>
       )}
 
-      {/* Hidden audio element */}
-      <audio 
-        ref={audioRef} 
-        src={AUDIO_SOURCES[selectedMode]} 
-        loop 
-        className="hidden" 
-      />
+      <div className="absolute inset-0 z-0 pointer-events-none">
+        <AnimatePresence>
+          {selectedMode === "DEEP SPACE" && (
+            <motion.div key="deepspace" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.5 }} className="absolute inset-0">
+              <DeepSpaceEnv />
+            </motion.div>
+          )}
+          {selectedMode === "RAIN" && (
+            <motion.div key="rain" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.5 }} className="absolute inset-0">
+              <RainEnv />
+            </motion.div>
+          )}
+          {selectedMode === "FOREST" && (
+            <motion.div key="forest" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.5 }} className="absolute inset-0">
+              <ForestEnv />
+            </motion.div>
+          )}
+          {selectedMode === "EMBER" && (
+            <motion.div key="ember" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.5 }} className="absolute inset-0">
+              <EmberEnv />
+            </motion.div>
+          )}
+          {selectedMode === "OCEAN" && (
+            <motion.div key="ocean" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.5 }} className="absolute inset-0">
+              <OceanEnv />
+            </motion.div>
+          )}
+          {selectedMode === "NIGHT" && (
+            <motion.div key="night" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.5 }} className="absolute inset-0">
+              <NightEnv />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
-      <div className="z-10 w-full max-w-lg p-8 glass-panel rounded-3xl flex flex-col items-center">
+      <div className="z-10 w-full max-w-lg p-8 glass-panel bg-black/40 backdrop-blur-xl rounded-3xl flex flex-col items-center shadow-2xl">
         
         {!isActive && !rewardData && (
           <>
@@ -130,7 +160,7 @@ export default function MeditateClient({ equippedEffects }: { equippedEffects: s
               <div>
                 <label className="text-xs text-gray-400 uppercase tracking-wider mb-3 block">Meditation Mode</label>
                 <div className="grid grid-cols-2 gap-3">
-                  {MODES.map((mode) => (
+                  {SOUNDSCAPES.map((mode) => (
                     <button
                       key={mode}
                       onClick={() => setSelectedMode(mode)}
@@ -140,7 +170,7 @@ export default function MeditateClient({ equippedEffects }: { equippedEffects: s
                           : 'bg-surface border-transparent text-gray-400 hover:bg-surface/80 border'
                       }`}
                     >
-                      {mode.replace("_", " ")}
+                      {mode}
                     </button>
                   ))}
                 </div>
@@ -176,31 +206,68 @@ export default function MeditateClient({ equippedEffects }: { equippedEffects: s
           </>
         )}
 
-        {isActive && (
-          <div className="flex flex-col items-center justify-center w-full min-h-[400px]">
-            <motion.div
-              animate={{
-                scale: [1, 1.5, 1],
-              }}
-              transition={{
-                duration: selectedMode === "BREATHING" ? 8 : 12,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-              className="w-32 h-32 rounded-full border border-primary/50 shadow-[0_0_30px_rgba(138,43,226,0.3)] flex items-center justify-center mb-12"
-            >
-              <div className="w-24 h-24 rounded-full bg-primary/20 blur-md" />
-            </motion.div>
+        {isActive && !rewardData && (
+          <div className="flex flex-col items-center w-full space-y-12">
             
-            <div className="text-5xl font-extralight text-white/90 tabular-nums mb-8 tracking-widest">
+            {/* Breathing Animation */}
+            <div className="relative w-64 h-64 flex items-center justify-center">
+              {/* Outer pulsing ring */}
+              <motion.div
+                animate={{
+                  scale: [1, 1.5, 1.5, 1],
+                  opacity: [0.3, 0.7, 0.7, 0.3],
+                }}
+                transition={{
+                  duration: 14, // 4s in, 4s hold, 6s out
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                  times: [0, 0.285, 0.571, 1] // 0s, 4s, 8s, 14s
+                }}
+                className="absolute inset-0 rounded-full border border-primary/50"
+              />
+              {/* Inner glowing circle */}
+              <motion.div
+                animate={{
+                  scale: [0.5, 1.2, 1.2, 0.5],
+                  backgroundColor: ['rgba(138,43,226,0.1)', 'rgba(138,43,226,0.4)', 'rgba(138,43,226,0.4)', 'rgba(138,43,226,0.1)'],
+                }}
+                transition={{
+                  duration: 14,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                  times: [0, 0.285, 0.571, 1]
+                }}
+                className="w-full h-full rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(138,43,226,0.3)] backdrop-blur-sm"
+              >
+                <motion.div
+                  animate={{ opacity: [1, 0, 1, 0, 1, 0] }}
+                  transition={{ duration: 14, repeat: Infinity, times: [0, 0.1, 0.285, 0.385, 0.571, 0.671] }}
+                  className="text-white/80 font-mono tracking-widest uppercase text-sm font-bold"
+                >
+                  Breathe
+                </motion.div>
+              </motion.div>
+            </div>
+
+            <div className="text-6xl font-light text-white tabular-nums tracking-tight">
               {formatTime(timeLeft)}
             </div>
-            
+
+            <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+              <motion.div 
+                className="h-full bg-primary"
+                initial={{ width: "100%" }}
+                animate={{ width: `${(timeLeft / (selectedDuration * 60)) * 100}%` }}
+                transition={{ duration: 1, ease: "linear" }}
+              />
+            </div>
+
             <button 
               onClick={() => handleEnd(false)}
-              className="text-gray-500 hover:text-white/80 text-sm tracking-widest uppercase transition-colors"
+              disabled={loading}
+              className="px-6 py-2 rounded-full border border-white/20 text-white/50 hover:text-white hover:bg-white/10 transition-colors text-sm font-bold"
             >
-              End Early
+              {loading ? "Ending..." : "END EARLY"}
             </button>
           </div>
         )}

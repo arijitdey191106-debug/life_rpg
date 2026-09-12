@@ -8,7 +8,6 @@ import { Volume2, VolumeX, Settings as SettingsIcon } from "lucide-react"
 
 export default function SettingsPage() {
   const audio = useAudio()
-  
   const [formData, setFormData] = useState({
     masterVolume: 100,
     uiVolume: 100,
@@ -16,7 +15,8 @@ export default function SettingsPage() {
     rewardVolume: 100,
     isMuted: false,
     reducedMotion: false,
-  })
+    locationOptIn: false,
+  } as any)
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -135,6 +135,7 @@ export default function SettingsPage() {
               />
             </div>
 
+
             <div className="pt-4 border-t border-white/10 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-medium text-white/80">Reduced Motion</h3>
@@ -146,6 +147,22 @@ export default function SettingsPage() {
                   className="sr-only peer"
                   checked={formData.reducedMotion}
                   onChange={(e) => handleChange("reducedMotion", e.target.checked)}
+                />
+                <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--primary)]"></div>
+              </label>
+            </div>
+
+            <div className="pt-4 border-t border-white/10 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-medium text-white/80">Visible to Nearby Players</h3>
+                <p className="text-xs text-white/50">Allow others to see your approximate distance</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  className="sr-only peer"
+                  checked={(formData as any).locationOptIn || false}
+                  onChange={(e) => handleChange("locationOptIn", e.target.checked)}
                 />
                 <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--primary)]"></div>
               </label>

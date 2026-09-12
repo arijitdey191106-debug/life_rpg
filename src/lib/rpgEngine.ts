@@ -1,5 +1,5 @@
 export const XP_BASE = 100;
-export const XP_EXPONENT = 1.5;
+export const XP_EXPONENT = 1.8;
 
 /**
  * Calculates the total XP required to reach a specific level.

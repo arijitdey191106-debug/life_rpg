@@ -5,16 +5,20 @@ import { prisma } from "@/lib/prisma"
 import QuestBoardClient from "./QuestBoardClient"
 import { getUserChallenges } from "@/app/actions/challenges"
 
-export default async function QuestsPage({
-  searchParams,
-}: {
-  searchParams?: { attribute?: string };
+export default async function QuestsPage(props: {
+  searchParams?: Promise<{ attribute?: string }>;
 }) {
+  const searchParams = await props.searchParams;
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) redirect("/login")
 
   const quests = await prisma.quest.findMany({
-    where: { userId: session.user.id },
+    where: { 
+      OR: [
+        { userId: session.user.id },
+        { type: 'SYSTEM' }
+      ]
+    },
     orderBy: { createdAt: "desc" }
   })
 

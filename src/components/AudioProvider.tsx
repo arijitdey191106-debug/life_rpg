@@ -5,6 +5,8 @@ import { getUserSettings } from "@/actions/settings"
 
 type AudioContextType = {
   playClick: () => void
+  playHover: () => void
+  playQuestAccepted: () => void
   playSuccess: () => void
   playLevelUp: () => void
   playAmbient: () => void
@@ -14,14 +16,18 @@ type AudioContextType = {
     uiVolume: number
     ambientVolume: number
     rewardVolume: number
+    meditationVolume: number
     isMuted: boolean
     reducedMotion: boolean
   }) => void
+  playMeditationTrack: (trackName: string) => void
+  stopMeditationTrack: () => void
   settings: {
     masterVolume: number
     uiVolume: number
     ambientVolume: number
     rewardVolume: number
+    meditationVolume: number
     isMuted: boolean
     reducedMotion: boolean
   }
@@ -41,6 +47,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     uiVolume: 100,
     ambientVolume: 100,
     rewardVolume: 100,
+    meditationVolume: 100,
     isMuted: false,
     reducedMotion: false,
   })
@@ -61,12 +68,13 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     getUserSettings().then((user) => {
       if (user) {
         setSettings({
-          masterVolume: user.masterVolume,
-          uiVolume: user.uiVolume,
-          ambientVolume: user.ambientVolume,
-          rewardVolume: user.rewardVolume,
-          isMuted: user.isMuted,
-          reducedMotion: user.reducedMotion,
+          masterVolume: user.masterVolume ?? 100,
+          uiVolume: user.uiVolume ?? 100,
+          ambientVolume: user.ambientVolume ?? 100,
+          rewardVolume: user.rewardVolume ?? 100,
+          meditationVolume: (user as any).meditationVolume ?? 100,
+          isMuted: user.isMuted ?? false,
+          reducedMotion: user.reducedMotion ?? false,
         })
       }
     })
@@ -113,8 +121,18 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     osc.stop(ctx.currentTime + duration)
   }
 
+  const playHover = () => {
+    playOscillator(800, "sine", 0.05, 0.05, "ui")
+  }
+
   const playClick = () => {
     playOscillator(400, "sine", 0.1, 0.2, "ui")
+  }
+
+  const playQuestAccepted = () => {
+    if (settings.isMuted) return
+    playOscillator(330, "triangle", 0.2, 0.15, "ui")
+    setTimeout(() => playOscillator(440, "triangle", 0.3, 0.15, "ui"), 100)
   }
 
   const playSuccess = () => {
@@ -132,12 +150,141 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => playOscillator(1046.50, "square", 1.0, 0.1, "reward"), 450)
   }
 
-  const playAmbient = () => {}
-  const stopAmbient = () => {}
+  const ambientOscillators = useRef<{osc1: OscillatorNode, osc2: OscillatorNode, gain: GainNode} | null>(null)
+
+  const playAmbient = () => {
+    if (settings.isMuted || settings.ambientVolume === 0) return
+    initAudio()
+    const ctx = audioCtxRef.current
+    if (!ctx || ambientOscillators.current) return
+
+    const baseVol = settings.masterVolume / 100
+    const catVol = settings.ambientVolume / 100
+    const finalVol = baseVol * catVol * 0.05 // low volume for ambient
+
+    const osc1 = ctx.createOscillator()
+    const osc2 = ctx.createOscillator()
+    const gainNode = ctx.createGain()
+
+    osc1.type = "sine"
+    osc1.frequency.value = 55 // low A
+    osc2.type = "triangle"
+    osc2.frequency.value = 55.5 // slight detune
+
+    gainNode.gain.setValueAtTime(0, ctx.currentTime)
+    gainNode.gain.linearRampToValueAtTime(finalVol, ctx.currentTime + 2) // fade in
+
+    osc1.connect(gainNode)
+    osc2.connect(gainNode)
+    gainNode.connect(ctx.destination)
+
+    osc1.start()
+    osc2.start()
+
+    ambientOscillators.current = { osc1, osc2, gain: gainNode }
+  }
+
+  const stopAmbient = () => {
+    const ctx = audioCtxRef.current
+    const ambient = ambientOscillators.current
+    if (!ctx || !ambient) return
+
+    ambient.gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 2) // fade out
+    setTimeout(() => {
+      ambient.osc1.stop()
+      ambient.osc2.stop()
+      ambient.osc1.disconnect()
+      ambient.osc2.disconnect()
+      ambient.gain.disconnect()
+      ambientOscillators.current = null
+    }, 2100)
+  }
+
+  const currentMeditationAudio = useRef<HTMLAudioElement | null>(null);
+
+  const playMeditationTrack = (trackName: string) => {
+    if (settings.isMuted || settings.meditationVolume === 0) return;
+    const baseVol = (settings.masterVolume / 100) * (settings.meditationVolume / 100);
+    
+    // Convert generic mode names to file names, e.g. "DEEP SPACE" to "deep-space"
+    const fileName = trackName.toLowerCase().replace(/ /g, '-');
+    const nextAudio = new Audio(`/audio/meditation/${fileName}.mp3`);
+    nextAudio.loop = true;
+    nextAudio.volume = 0; // Start silent for fade in
+    
+    nextAudio.play().catch(e => console.error("Audio play failed", e));
+    
+    // Crossfade
+    const fadeDuration = 2000;
+    const steps = 20;
+    const stepTime = fadeDuration / steps;
+    const volStep = baseVol / steps;
+
+    if (currentMeditationAudio.current) {
+      const prevAudio = currentMeditationAudio.current;
+      let prevVol = prevAudio.volume;
+      const prevVolStep = prevVol / steps;
+      
+      let step = 0;
+      const fadeInterval = setInterval(() => {
+        step++;
+        if (prevAudio) {
+          prevVol = Math.max(0, prevVol - prevVolStep);
+          prevAudio.volume = prevVol;
+        }
+        if (nextAudio) {
+          nextAudio.volume = Math.min(baseVol, nextAudio.volume + volStep);
+        }
+        
+        if (step >= steps) {
+          clearInterval(fadeInterval);
+          prevAudio.pause();
+          prevAudio.currentTime = 0;
+        }
+      }, stepTime);
+    } else {
+      let step = 0;
+      const fadeInterval = setInterval(() => {
+        step++;
+        if (nextAudio) {
+          nextAudio.volume = Math.min(baseVol, nextAudio.volume + volStep);
+        }
+        if (step >= steps) {
+          clearInterval(fadeInterval);
+        }
+      }, stepTime);
+    }
+    
+    currentMeditationAudio.current = nextAudio;
+  };
+
+  const stopMeditationTrack = () => {
+    if (currentMeditationAudio.current) {
+      const audio = currentMeditationAudio.current;
+      const fadeDuration = 2000;
+      const steps = 20;
+      const stepTime = fadeDuration / steps;
+      let currentVol = audio.volume;
+      const volStep = currentVol / steps;
+      
+      let step = 0;
+      const fadeInterval = setInterval(() => {
+        step++;
+        currentVol = Math.max(0, currentVol - volStep);
+        audio.volume = currentVol;
+        if (step >= steps) {
+          clearInterval(fadeInterval);
+          audio.pause();
+          audio.currentTime = 0;
+          currentMeditationAudio.current = null;
+        }
+      }, stepTime);
+    }
+  };
 
   return (
     <AudioContext.Provider value={{
-      playClick, playSuccess, playLevelUp, playAmbient, stopAmbient, updateVolume, settings
+      playClick, playHover, playQuestAccepted, playSuccess, playLevelUp, playAmbient, stopAmbient, playMeditationTrack, stopMeditationTrack, updateVolume, settings
     }}>
       {children}
     </AudioContext.Provider>

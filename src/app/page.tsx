@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { getUserProfile } from "@/app/actions/user"
 import { calculateLevelProgress } from "@/lib/rpgEngine"
 import DashboardClient from "@/components/DashboardClient"
+import { getNearbyPlayers } from "@/actions/nearby"
 
 export default async function Dashboard() {
   const session = await getServerSession(authOptions)
@@ -24,6 +25,7 @@ export default async function Dashboard() {
     .slice(0, 3)
 
   const totalCompletedQuests = profile.quests.filter(q => q.status === "COMPLETED").length
+  const nearbyPlayers = await getNearbyPlayers()
 
   return (
     <DashboardClient
@@ -65,6 +67,8 @@ export default async function Dashboard() {
         rarity: ua.achievement.rarity,
         unlockedAt: ua.unlockedAt.toISOString(),
       }))}
+      locationOptIn={(profile as any).locationOptIn || false}
+      nearbyPlayers={nearbyPlayers}
     />
   )
 }

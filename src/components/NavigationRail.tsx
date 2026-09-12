@@ -2,20 +2,23 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Swords, User, TrendingUp, Backpack, Trophy, LogOut, Menu, X, Target, Wind, Users, Settings } from "lucide-react"
+import { Home, Swords, User, TrendingUp, Backpack, Trophy, LogOut, Menu, X, Target, Wind, Users, Settings, Globe, Shield } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
+import { useAudio } from "@/components/AudioProvider"
 
 const NAV_ITEMS = [
   { label: "Home", href: "/", icon: Home },
   { label: "Quests", href: "/quests", icon: Swords },
+  { label: "World", href: "/world", icon: Globe },
   { label: "Character", href: "/character", icon: User },
   { label: "Focus", href: "/focus", icon: Target },
   { label: "Meditate", href: "/meditate", icon: Wind },
   { label: "Progress", href: "/progress", icon: TrendingUp },
   { label: "Party", href: "/party", icon: Users },
+  { label: "Duels", href: "/duels", icon: Shield },
   { label: "Inventory", href: "/inventory", icon: Backpack },
   { label: "Achievements", href: "/achievements", icon: Trophy },
   { label: "Settings", href: "/settings", icon: Settings },
@@ -24,6 +27,7 @@ const NAV_ITEMS = [
 export default function NavigationRail() {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const audio = useAudio()
 
   return (
     <>
@@ -47,6 +51,8 @@ export default function NavigationRail() {
                 <li key={item.href}>
                   <Link
                     href={item.href}
+                    onClick={() => audio.playClick()}
+                    onMouseEnter={() => audio.playHover()}
                     className={cn(
                       "flex items-center space-x-3 p-3 rounded-xl transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                       isActive 
@@ -85,6 +91,8 @@ export default function NavigationRail() {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => audio.playClick()}
+                onMouseEnter={() => audio.playHover()}
                 className={cn(
                   "flex flex-col items-center gap-1 p-2 rounded-lg transition-colors min-w-[3rem] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                   isActive ? "text-primary" : "text-gray-500"

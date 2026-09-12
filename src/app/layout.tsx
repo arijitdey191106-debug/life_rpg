@@ -3,6 +3,8 @@ import { Inter, JetBrains_Mono } from "next/font/google"
 import "./globals.css"
 import { Providers } from "@/components/Providers"
 import NavigationShell from "@/components/NavigationShell"
+import CursorGlow from "@/components/CursorGlow"
+import GlobalEffectsServer from "@/components/GlobalEffectsServer"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -28,6 +30,8 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="antialiased h-screen overflow-hidden flex bg-[#05050A] text-[#e2e8f0]">
         <Providers>
+          <GlobalEffectsServer />
+          <CursorGlow />
           <NavigationShell>
             {children}
           </NavigationShell>

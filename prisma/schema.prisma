@@ -61,6 +61,7 @@ model User {
   locationOptIn    Boolean         @default(false)
   approxLat        Float?
   approxLng        Float?
+  locationUpdatedAt DateTime?
 
   // Duels & Transactions
   duelsChallenged  Duel[]              @relation("DuelChallenger")

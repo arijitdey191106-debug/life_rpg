@@ -59,7 +59,7 @@ function AnimatedNumber({ value, duration = 1000 }: { value: number; duration?: 
   
   useEffect(() => {
     const start = Date.now()
-    const startVal = 0
+    const startVal = display // Animate from current display value
     const tick = () => {
       const elapsed = Date.now() - start
       const progress = Math.min(elapsed / duration, 1)

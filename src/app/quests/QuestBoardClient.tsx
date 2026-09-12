@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle2, Trash2, Edit2, Plus, Calendar, Clock, RefreshCw, X, Shield, Sparkles, Star } from 'lucide-react'
 import { createQuest, editQuest, claimQuestReward, deleteQuest } from '@/app/actions/quest'
@@ -57,6 +58,7 @@ export default function QuestBoardClient({
   initialChallenges?: any[],
   initialAttribute?: string 
 }) {
+  const router = useRouter()
   const [quests, setQuests] = useState<Quest[]>(
     initialQuests.map((q: any) => ({
       ...q,
@@ -133,6 +135,7 @@ export default function QuestBoardClient({
       }
       
       setQuests(prev => prev.map(q => q.id === id ? { ...q, status: 'CLAIMED', completedAt: new Date() } : q))
+      router.refresh() // Invalidate Next.js client router cache
       
       setTimeout(() => {
         setCelebration(null)
@@ -198,6 +201,7 @@ export default function QuestBoardClient({
     }
     
     setChallenges(prev => prev.map(c => c.id === id ? { ...c, status: 'CLAIMED', completedAt: new Date() } : c))
+    router.refresh()
   }
 
   const getAttrColor = (category: string) => {

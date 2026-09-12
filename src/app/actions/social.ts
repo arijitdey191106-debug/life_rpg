@@ -92,6 +92,7 @@ export async function sendFriendRequest(receiverId: string) {
       }
     })
 
+    revalidatePath("/party")
     return { success: true }
   } catch (error) {
     console.error("Send friend request error:", error)
@@ -117,6 +118,7 @@ export async function cancelFriendRequest(requestId: string) {
       where: { id: requestId }
     })
 
+    revalidatePath("/party")
     return { success: true }
   } catch (error) {
     console.error("Cancel friend request error:", error)
@@ -138,17 +140,12 @@ export async function acceptFriendRequest(requestId: string) {
       return { success: false, error: "Invalid request" }
     }
 
-    // Use transaction to accept request and create friendships
+    // Use transaction to delete request and create friendships
     await prisma.$transaction(async (tx) => {
-      await tx.friendRequest.update({
-        where: { id: requestId },
-        data: { status: "ACCEPTED" }
+      await tx.friendRequest.delete({
+        where: { id: requestId }
       })
 
-      // Friendship is bidirectional or one direction if queried both ways? 
-      // Based on schema, we might need two entries for bidirectional or query with OR.
-      // Usually, just one entry where userId < friendId or just query OR.
-      // Let's just create one entry.
       await tx.friendship.create({
         data: {
           userId: request.senderId,
@@ -157,6 +154,8 @@ export async function acceptFriendRequest(requestId: string) {
       })
     })
 
+    revalidatePath("/party")
+    revalidatePath("/party")
     return { success: true }
   } catch (error) {
     console.error("Accept friend request error:", error)
@@ -178,11 +177,12 @@ export async function declineFriendRequest(requestId: string) {
       return { success: false, error: "Invalid request" }
     }
 
-    await prisma.friendRequest.update({
-      where: { id: requestId },
-      data: { status: "DECLINED" }
+    await prisma.friendRequest.delete({
+      where: { id: requestId }
     })
 
+    revalidatePath("/party")
+    revalidatePath("/party")
     return { success: true }
   } catch (error) {
     console.error("Decline friend request error:", error)
@@ -215,6 +215,7 @@ export async function removeFriend(friendId: string) {
       }
     })
 
+    revalidatePath("/party")
     return { success: true }
   } catch (error) {
     console.error("Remove friend error:", error)

@@ -20,7 +20,7 @@ const NAV_ITEMS = [
   { label: "Progress", href: "/progress", icon: TrendingUp },
   { label: "Party", href: "/party", icon: Users },
   { label: "Duels", href: "/duels", icon: Shield },
-  { label: "Inventory", href: "/inventory", icon: Backpack },
+  { label: "Outfits", href: "/outfits", icon: Backpack },
   { label: "Achievements", href: "/achievements", icon: Trophy },
   { label: "Settings", href: "/settings", icon: Settings },
 ]

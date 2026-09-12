@@ -112,8 +112,8 @@ export async function purchaseItem(itemId: string) {
     // Check achievements
     await checkAchievements(userId)
     
-    revalidatePath("/inventory")
-    revalidatePath("/shop")
+    revalidatePath("/outfits")
+    
     revalidatePath("/character")
     revalidatePath("/")
     
@@ -170,8 +170,8 @@ export async function equipItem(userItemId: string) {
       })
     })
 
-    revalidatePath("/inventory")
-    revalidatePath("/shop")
+    revalidatePath("/outfits")
+    
     revalidatePath("/character")
     revalidatePath("/")
     return { success: true }
@@ -201,8 +201,8 @@ export async function unequipItem(userItemId: string) {
       data: { equipped: false }
     })
 
-    revalidatePath("/inventory")
-    revalidatePath("/shop")
+    revalidatePath("/outfits")
+    
     revalidatePath("/character")
     revalidatePath("/")
     return { success: true }

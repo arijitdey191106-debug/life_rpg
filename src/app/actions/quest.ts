@@ -215,36 +215,71 @@ export async function claimQuestReward(questId: string) {
   const levelProgress = calculateLevelProgress(newXp)
 
   try {
-    await prisma.$transaction([
-      prisma.rewardTransaction.create({
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      // Create RewardTransaction first (fails if already claimed)
+      let transactionSourceId = questId;
+      if (quest.isRecurring) {
+        transactionSourceId = `${questId}_${todayStr}`;
+      }
+
+      await tx.rewardTransaction.create({
         data: { 
           userId, 
-          sourceId: questId, 
+          sourceId: transactionSourceId, 
           sourceType: "QUEST", 
           xpGranted: quest.xpReward, 
           goldGranted: quest.goldReward 
         }
-      }),
-      prisma.quest.update({
-        where: { id: questId },
-        data: { status: 'CLAIMED', completedAt: now }
-      }),
-      prisma.user.update({
+      });
+
+      if (quest.isRecurring) {
+        let nextDueDate = quest.dueDate ? new Date(quest.dueDate) : new Date();
+        if (quest.recurringInterval === 'DAILY') {
+          nextDueDate.setDate(nextDueDate.getDate() + 1);
+        } else if (quest.recurringInterval === 'WEEKLY') {
+          nextDueDate.setDate(nextDueDate.getDate() + 7);
+        } else if (quest.recurringInterval === 'MONTHLY') {
+          nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+        }
+
+        await tx.quest.update({
+          where: { id: questId },
+          data: { status: 'PENDING', dueDate: nextDueDate }
+        });
+      } else {
+        await tx.quest.update({
+          where: { id: questId },
+          data: { status: 'CLAIMED', completedAt: now }
+        });
+      }
+
+      const updated = await tx.user.update({
         where: { id: userId },
         data: {
-          xp: newXp,
-          level: levelProgress.currentLevel,
-          gold: user.gold + quest.goldReward,
+          xp: { increment: quest.xpReward },
+          gold: { increment: quest.goldReward },
+          [categoryAttr]: { increment: 1 },
           currentStreak,
           bestStreak,
           lastActive: now,
-          [categoryAttr]: attributeVal + 1
         }
-      })
-    ])
+      });
+      
+      const computedLevel = calculateLevelProgress(updated.xp);
+      if (computedLevel.currentLevel > updated.level) {
+        await tx.user.update({
+          where: { id: userId },
+          data: { level: computedLevel.currentLevel }
+        });
+        updated.level = computedLevel.currentLevel;
+      }
+      return updated;
+    });
+
+    levelProgress.currentLevel = updatedUser.level;
   } catch (error: any) {
     if (error.code === 'P2002') {
-      throw new Error("Reward already claimed.")
+      throw new Error("Reward already claimed for this interval.")
     }
     throw error
   }

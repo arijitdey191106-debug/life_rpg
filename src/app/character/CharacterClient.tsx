@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Shield, Flame, Coins, Star, Swords, Trophy, Calendar, TrendingUp, X } from "lucide-react"
@@ -110,9 +111,9 @@ export default function CharacterClient(props: CharacterProps) {
           <div className="text-primary font-mono mt-1 uppercase tracking-[0.3em] text-sm">Level {props.level} Operator</div>
           
           <div className="mt-4 z-10">
-            <a href="/shop" className="px-6 py-2 bg-[var(--primary)]/20 text-[var(--primary)] border border-[var(--primary)]/50 rounded-lg text-sm font-bold uppercase tracking-widest hover:bg-[var(--primary)] hover:text-white transition-all shadow-[0_0_15px_rgba(138,43,226,0.3)] flex items-center gap-2">
-              <span>OUTFIT SHOP</span>
-            </a>
+            <Link href="/outfits" className="px-6 py-2 bg-[var(--primary)]/20 text-[var(--primary)] border border-[var(--primary)]/50 rounded-lg text-sm font-bold uppercase tracking-widest hover:bg-[var(--primary)] hover:text-white transition-all shadow-[0_0_15px_rgba(138,43,226,0.3)] flex items-center gap-2">
+              <span>OUTFITS</span>
+            </Link>
           </div>
           
           {/* XP Progress */}
@@ -137,18 +138,14 @@ export default function CharacterClient(props: CharacterProps) {
           <motion.div variants={stagger.item} className="glass-panel p-6 flex flex-col items-center text-center relative">
             <h3 className="absolute top-4 left-4 text-xs font-bold tracking-widest text-white/50 uppercase">Social Profile</h3>
             
-            <div className="mt-4 relative cursor-pointer group" onMouseEnter={() => audio.playHover()} onClick={() => { audio.playClick(); setIsAvatarModalOpen(true) }}>
+            <div className="mt-4 relative" onMouseEnter={() => audio.playHover()}>
               <motion.div 
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ delay: 0.3, duration: 0.6, type: "spring" }}
-                className={`relative w-24 h-24 rounded-full border-2 border-white/10 flex items-center justify-center bg-black/50 overflow-hidden ${equippedFrame ? '' : 'pulse-glow'} group-hover:border-primary/50 transition-colors z-10`}
+                className={`relative w-24 h-24 rounded-full border-2 border-white/10 flex items-center justify-center bg-black/50 overflow-hidden ${equippedFrame ? '' : 'pulse-glow'} transition-colors z-10`}
               >
                 <span className="text-5xl">{props.avatars.find(a => a.id === props.currentAvatar)?.imageUrl || '👱‍♂️'}</span>
-                
-                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-50">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-white">Change</span>
-                </div>
               </motion.div>
               
               {/* Render Frame if equipped */}
@@ -297,73 +294,6 @@ export default function CharacterClient(props: CharacterProps) {
         </div>
       </motion.div>
 
-      {/* Avatar Modal */}
-      <AnimatePresence>
-        {isAvatarModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="glass-panel w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col rounded-xl border border-white/20"
-            >
-              <div className="flex justify-between items-center p-6 border-b border-white/10">
-                <h2 className="text-xl font-bold tracking-widest text-white">SELECT AVATAR</h2>
-                <button onClick={() => setIsAvatarModalOpen(false)} className="text-white/50 hover:text-white">
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-              <div className="p-6 overflow-y-auto grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4">
-                {props.avatars.map(avatar => {
-                  const isUnlocked = props.level >= avatar.unlockLevel
-                  return (
-                    <button
-                      key={avatar.id}
-                      onMouseEnter={() => audio.playHover()}
-                      onClick={() => {
-                        if (isUnlocked) {
-                          audio.playClick()
-                          setSelectedAvatarId(avatar.id)
-                        }
-                      }}
-                      className={`relative flex flex-col items-center p-4 rounded-lg border transition-all ${
-                        selectedAvatarId === avatar.id 
-                          ? 'bg-primary/20 border-primary' 
-                          : isUnlocked 
-                            ? 'bg-white/5 border-white/10 hover:bg-white/10' 
-                            : 'bg-black/50 border-white/5 opacity-50 cursor-not-allowed grayscale'
-                      }`}
-                    >
-                      <span className="text-4xl mb-2">{avatar.imageUrl}</span>
-                      <span className="text-[10px] font-bold text-center w-full truncate text-white">{avatar.name}</span>
-                      {!isUnlocked && (
-                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center rounded-lg backdrop-blur-[1px]">
-                          <span className="text-[10px] font-mono font-bold text-red-400">LVL {avatar.unlockLevel}</span>
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-              <div className="p-6 border-t border-white/10 flex justify-end gap-3 bg-black/20">
-                <button 
-                  onClick={() => setIsAvatarModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-white/70 hover:text-white transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => selectedAvatarId && handleEquip(selectedAvatarId)}
-                  disabled={!selectedAvatarId || isEquipping}
-                  className="px-6 py-2 bg-[var(--primary)] hover:bg-[#9b4dff] text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[100px]"
-                >
-                  {isEquipping ? "Equipping..." : "Equip"}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </motion.div>
   )
 }

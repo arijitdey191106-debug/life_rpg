@@ -227,10 +227,10 @@ export default function QuestBoardClient({
 
     const activeQ = filteredQuests.filter(q => q.status === 'PENDING' && q.type !== 'SYSTEM');
     const systemQ = filteredQuests.filter(q => q.type === 'SYSTEM');
-    const completedQ = filteredQuests.filter(q => q.status === 'COMPLETED');
+    const completedQ = filteredQuests.filter(q => q.status === 'COMPLETED' || q.status === 'CLAIMED');
     
     const activeC = filteredChallenges.filter(c => c.status === 'AVAILABLE');
-    const completedC = filteredChallenges.filter(c => c.status === 'COMPLETED');
+    const completedC = filteredChallenges.filter(c => c.status === 'COMPLETED' || c.status === 'CLAIMED');
 
     if (tab === 'ALL') {
       return { quests: [...activeQ, ...systemQ], challenges: activeC };
@@ -372,7 +372,7 @@ export default function QuestBoardClient({
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className={`glass-panel p-6 rounded-xl flex flex-col justify-between ${quest.status === 'COMPLETED' ? 'border-gray-800 opacity-60' : 'glow-border'}`}
+              className={`glass-panel p-6 rounded-xl flex flex-col justify-between ${(quest.status === 'COMPLETED' || quest.status === 'CLAIMED') ? 'border-gray-800 opacity-60' : 'glow-border'}`}
             >
               <div>
                 <div className="flex justify-between items-start mb-4">
@@ -397,7 +397,7 @@ export default function QuestBoardClient({
                   )}
                 </div>
                 
-                <h3 className={`text-xl font-bold mb-2 ${quest.status === 'COMPLETED' ? 'line-through text-gray-400' : ''}`}>{quest.title}</h3>
+                <h3 className={`text-xl font-bold mb-2 ${(quest.status === 'COMPLETED' || quest.status === 'CLAIMED') ? 'line-through text-gray-400' : ''}`}>{quest.title}</h3>
                 {quest.description && <p className="text-gray-400 text-sm mb-4 line-clamp-3">{quest.description}</p>}
                 
                 <div className="flex flex-wrap gap-2 text-xs text-gray-300 mb-4">
@@ -444,7 +444,7 @@ export default function QuestBoardClient({
                     <CheckCircle2 className="w-6 h-6" />
                   </button>
                 )}
-                {quest.status === 'COMPLETED' && (
+                {(quest.status === 'COMPLETED' || quest.status === 'CLAIMED') && (
                   <div className="text-sm text-gray-500">
                     Completed on: {quest.completedAt?.toLocaleDateString()}
                   </div>

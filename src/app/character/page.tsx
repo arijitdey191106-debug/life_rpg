@@ -17,15 +17,15 @@ export default async function CharacterPage() {
   const skillNodes = await getSkillNodes()
 
   const levelProgress = calculateLevelProgress(profile.xp)
-  const totalCompleted = profile.quests.filter(q => q.status === "COMPLETED").length
+  const totalCompleted = profile.quests.filter(q => q.status === "COMPLETED" || q.status === "CLAIMED").length
 
   // Category breakdown for quests completed
   const categoryBreakdown = {
-    INTELLECT: profile.quests.filter(q => q.status === "COMPLETED" && q.category === "INTELLECT").length,
-    STRENGTH: profile.quests.filter(q => q.status === "COMPLETED" && q.category === "STRENGTH").length,
-    DISCIPLINE: profile.quests.filter(q => q.status === "COMPLETED" && q.category === "DISCIPLINE").length,
-    CREATIVITY: profile.quests.filter(q => q.status === "COMPLETED" && q.category === "CREATIVITY").length,
-    FOCUS: profile.quests.filter(q => q.status === "COMPLETED" && q.category === "FOCUS").length,
+    INTELLECT: profile.quests.filter(q => (q.status === "COMPLETED" || q.status === "CLAIMED") && q.category === "INTELLECT").length,
+    STRENGTH: profile.quests.filter(q => (q.status === "COMPLETED" || q.status === "CLAIMED") && q.category === "STRENGTH").length,
+    DISCIPLINE: profile.quests.filter(q => (q.status === "COMPLETED" || q.status === "CLAIMED") && q.category === "DISCIPLINE").length,
+    CREATIVITY: profile.quests.filter(q => (q.status === "COMPLETED" || q.status === "CLAIMED") && q.category === "CREATIVITY").length,
+    FOCUS: profile.quests.filter(q => (q.status === "COMPLETED" || q.status === "CLAIMED") && q.category === "FOCUS").length,
   }
 
   // Equipped items

@@ -113,6 +113,9 @@ export async function purchaseItem(itemId: string) {
     await checkAchievements(userId)
     
     revalidatePath("/inventory")
+    revalidatePath("/shop")
+    revalidatePath("/character")
+    revalidatePath("/")
     
     return { success: true, message: `Purchased ${item.name}!` }
   } catch (error) {
@@ -168,6 +171,9 @@ export async function equipItem(userItemId: string) {
     })
 
     revalidatePath("/inventory")
+    revalidatePath("/shop")
+    revalidatePath("/character")
+    revalidatePath("/")
     return { success: true }
   } catch (error) {
     console.error("Error equipping item:", error)
@@ -196,6 +202,9 @@ export async function unequipItem(userItemId: string) {
     })
 
     revalidatePath("/inventory")
+    revalidatePath("/shop")
+    revalidatePath("/character")
+    revalidatePath("/")
     return { success: true }
   } catch (error) {
     console.error("Error unequipping item:", error)

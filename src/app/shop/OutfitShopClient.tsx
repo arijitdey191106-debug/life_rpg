@@ -45,7 +45,8 @@ export default function OutfitShopClient({ userGold, userLevel, shopItems, inven
       const res = await purchaseItem(itemId)
       if (res.success) {
         showToast(res.message || "Purchase successful", "success")
-        // Gold and inventory update automatically triggers revalidatePath
+        // Reload page to refresh inventory and gold from server
+        setTimeout(() => window.location.reload(), 500)
       } else {
         showToast(res.error || "Purchase failed", "error")
       }

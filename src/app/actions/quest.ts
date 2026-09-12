@@ -176,7 +176,9 @@ export async function claimQuestReward(questId: string) {
 
   const quest = await prisma.quest.findUnique({ where: { id: questId } })
   if (!quest || quest.userId !== userId) throw new Error('Unauthorized')
-  if (quest.status !== 'VERIFIED') throw new Error('Invalid state transition. Must be VERIFIED.')
+  if (quest.status !== 'VERIFIED' && quest.status !== 'PENDING') {
+    throw new Error('Invalid state transition. Must be VERIFIED or PENDING.')
+  }
 
   const user = await prisma.user.findUnique({ where: { id: userId } })
   if (!user) throw new Error('User not found')
@@ -255,6 +257,9 @@ export async function claimQuestReward(questId: string) {
   }
 
   revalidatePath('/quests')
+  revalidatePath('/')
+  revalidatePath('/character')
+  revalidatePath('/progress')
   return { 
     xp: quest.xpReward, 
     gold: quest.goldReward, 

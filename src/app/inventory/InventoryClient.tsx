@@ -46,6 +46,8 @@ export default function InventoryClient({ userGold, shopItems, inventory }: Inve
       const res = await purchaseItem(itemId)
       if (res.success) {
         showToast(res.message || "Purchase successful", "success")
+        // Reload page to refresh inventory state from server
+        setTimeout(() => window.location.reload(), 500)
       } else {
         showToast(res.error || "Purchase failed", "error")
       }
@@ -62,6 +64,8 @@ export default function InventoryClient({ userGold, shopItems, inventory }: Inve
       const res = await equipItem(userItemId)
       if (res.success) {
         showToast("Item equipped", "success")
+        // Reload page to refresh equipped state from server
+        setTimeout(() => window.location.reload(), 500)
       } else {
         showToast(res.error || "Failed to equip", "error")
       }
@@ -78,6 +82,8 @@ export default function InventoryClient({ userGold, shopItems, inventory }: Inve
       const res = await unequipItem(userItemId)
       if (res.success) {
         showToast("Item unequipped", "success")
+        // Reload page to refresh equipped state from server
+        setTimeout(() => window.location.reload(), 500)
       } else {
         showToast(res.error || "Failed to unequip", "error")
       }

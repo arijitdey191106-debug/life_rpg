@@ -19,12 +19,12 @@ export default async function Dashboard() {
 
   const levelProgress = calculateLevelProgress(profile.xp)
   const activeQuests = profile.quests.filter(q => q.status === "PENDING").slice(0, 5)
-  const recentCompleted = profile.quests.filter(q => q.status === "COMPLETED").slice(0, 3)
+  const recentCompleted = profile.quests.filter(q => q.status === "COMPLETED" || q.status === "CLAIMED").slice(0, 3)
   const recentAchievements = profile.achievements
     .sort((a, b) => new Date(b.unlockedAt).getTime() - new Date(a.unlockedAt).getTime())
     .slice(0, 3)
 
-  const totalCompletedQuests = profile.quests.filter(q => q.status === "COMPLETED").length
+  const totalCompletedQuests = profile.quests.filter(q => q.status === "COMPLETED" || q.status === "CLAIMED").length
   const nearbyPlayers = await getNearbyPlayers()
 
   return (

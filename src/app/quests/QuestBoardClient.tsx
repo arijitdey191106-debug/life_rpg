@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle2, Trash2, Edit2, Plus, Calendar, Clock, RefreshCw, X, Shield, Sparkles, Star } from 'lucide-react'
+import { CheckCircle2, Trash2, Edit2, Plus, Calendar, Clock, RefreshCw, X, Shield, Sparkles, Loader2, Target, Sword, AlertCircle } from 'lucide-react'
 import { createQuest, editQuest, claimQuestReward, deleteQuest } from '@/app/actions/quest'
 import { acceptSystemQuest } from '@/app/actions/acceptSystemQuest'
 import { processSystemChallenge } from '@/app/actions/processChallenge'
@@ -46,8 +46,7 @@ type UserChallenge = {
 }
 
 const CATEGORIES = ['ALL', 'INTELLECT', 'STRENGTH', 'DISCIPLINE', 'CREATIVITY', 'FOCUS']
-const DIFFICULTIES = ['EASY', 'MEDIUM', 'HARD', 'EPIC']
-const TABS = ['ALL', 'TODAY', 'PERSONAL', 'SYSTEM', 'COMPLETED']
+const TABS = ['ACTIVE', 'AVAILABLE', 'COMPLETED']
 
 export default function QuestBoardClient({ 
   initialQuests, 
@@ -59,28 +58,34 @@ export default function QuestBoardClient({
   initialAttribute?: string 
 }) {
   const router = useRouter()
+  
+  // Safe Date parsing done ONCE on initial render
   const [quests, setQuests] = useState<Quest[]>(
     initialQuests.map((q: any) => ({
       ...q,
-      dueDate: q.dueDate ? new Date(q.dueDate) : null,
-      createdAt: new Date(q.createdAt),
-      completedAt: q.completedAt ? new Date(q.completedAt) : null,
+      dueDate: q.dueDate ? new Date(q.dueDate).toISOString().split('T')[0] : null,
+      createdAt: q.createdAt,
+      completedAt: q.completedAt ? new Date(q.completedAt).toISOString().split('T')[0] : null,
     }))
   )
   
   const [challenges, setChallenges] = useState<UserChallenge[]>(
     initialChallenges.map((c: any) => ({
       ...c,
-      completedAt: c.completedAt ? new Date(c.completedAt) : null,
+      completedAt: c.completedAt ? new Date(c.completedAt).toISOString().split('T')[0] : null,
     }))
   )
 
-  const [tab, setTab] = useState<string>('ALL')
+  const [tab, setTab] = useState<string>('ACTIVE')
   const [attributeFilter, setAttributeFilter] = useState<string>(initialAttribute.toUpperCase())
   
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingQuest, setEditingQuest] = useState<Quest | null>(null)
   
+  // Loading & Action states
+  const [isSubmitting, setIsSubmitting] = useState<string | null>(null)
+  const [isModalSubmitting, setIsModalSubmitting] = useState(false)
+
   const [celebration, setCelebration] = useState<{ xp: number; gold: number; category: string } | null>(null)
   const [levelUp, setLevelUp] = useState<number | null>(null)
   
@@ -110,108 +115,121 @@ export default function QuestBoardClient({
   }
 
   const handleAction = async (formData: FormData) => {
-    if (editingQuest) {
-      await editQuest(editingQuest.id, formData)
-    } else {
-      await createQuest(formData)
+    setIsModalSubmitting(true)
+    try {
+      if (editingQuest) {
+        await editQuest(editingQuest.id, formData)
+      } else {
+        await createQuest(formData)
+      }
+      setIsModalOpen(false)
+      window.location.reload()
+    } catch (err: any) {
+      setQuestError({ title: "ERROR", description: err.message || 'Failed to save quest' })
+    } finally {
+      setIsModalSubmitting(false)
     }
-    setIsModalOpen(false)
-    window.location.reload()
   }
 
   const handleComplete = async (id: string) => {
+    if (isSubmitting) return;
+    setIsSubmitting(id);
     try {
       const res = await claimQuestReward(id) as any
       if (res?.error) {
-        setQuestError({
-          title: "VERIFICATION FAILED",
-          description: res.error
-        })
+        setQuestError({ title: "VERIFICATION FAILED", description: res.error })
         return
       }
       setCelebration({ xp: res.xp, gold: res.gold, category: res.category })
-      if (res.levelUp) {
-        setLevelUp(res.levelUp)
-      }
+      if (res.levelUp) setLevelUp(res.levelUp)
       
-      setQuests(prev => prev.map(q => q.id === id ? { ...q, status: 'CLAIMED', completedAt: new Date().toISOString() } : q))
-      router.refresh() // Invalidate Next.js client router cache
+      setQuests(prev => prev.map(q => q.id === id ? { ...q, status: 'CLAIMED', completedAt: new Date().toISOString().split('T')[0] } : q))
+      router.refresh()
       
       setTimeout(() => {
         setCelebration(null)
-        if (res.levelUp) {
-          setTimeout(() => setLevelUp(null), 3000)
-        }
+        if (res.levelUp) setTimeout(() => setLevelUp(null), 3000)
       }, 3000)
     } catch (err: any) {
-      setQuestError({
-        title: "ERROR",
-        description: err.message || 'Failed to claim reward'
-      })
+      setQuestError({ title: "ERROR", description: err.message || 'Failed to claim reward' })
+    } finally {
+      setIsSubmitting(null)
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this quest?')) {
-      await deleteQuest(id)
-      setQuests(prev => prev.filter(q => q.id !== id))
+    if (isSubmitting) return;
+    if (confirm('Are you sure you want to abandon this quest?')) {
+      setIsSubmitting(id);
+      try {
+        await deleteQuest(id)
+        setQuests(prev => prev.filter(q => q.id !== id))
+      } finally {
+        setIsSubmitting(null)
+      }
     }
   }
 
   const handleAcceptSystemQuest = async (id: string) => {
+    if (isSubmitting) return;
+    setIsSubmitting(id);
     try {
       await acceptSystemQuest(id)
-      window.location.reload()
+      setQuestSuccess({ title: "Quest Accepted", xp: 0, gold: 0 })
+      setTimeout(() => window.location.reload(), 1000)
     } catch (err: any) {
-      setQuestError({
-        title: "ERROR",
-        description: err.message || 'Failed to accept system quest'
-      })
+      setQuestError({ title: "ERROR", description: err.message || 'Failed to accept quest' })
+    } finally {
+      setIsSubmitting(null)
     }
   }
   
   const handleClaimChallenge = async (id: string) => {
-    const res = await processSystemChallenge(id) as any
-    if (res?.error) {
-      if (res.error === "OBJECTIVE_NOT_MET" && res.details) {
-        setQuestError({
-          title: "QUEST NOT COMPLETE",
-          description: `This quest cannot be claimed yet.\n\nREQUIRED\nComplete ${res.details.required} ${res.details.noun.toLowerCase()}.\n\nCURRENT PROGRESS\n${res.details.current} / ${res.details.required} completed\n\nComplete ${res.details.remaining} more to unlock this reward.`,
-          required: res.details.required,
-          current: res.details.current,
-          remaining: res.details.remaining,
-          noun: res.details.noun
-        })
-      } else {
-        setQuestError({
-          title: "VERIFICATION FAILED",
-          description: res.error
+    if (isSubmitting) return;
+    setIsSubmitting(id);
+    try {
+      const res = await processSystemChallenge(id) as any
+      if (res?.error) {
+        if (res.error === "OBJECTIVE_NOT_MET" && res.details) {
+          setQuestError({
+            title: "QUEST NOT COMPLETE",
+            description: `This quest cannot be claimed yet.\n\nREQUIRED\nComplete ${res.details.required} ${res.details.noun.toLowerCase()}.\n\nCURRENT PROGRESS\n${res.details.current} / ${res.details.required} completed\n\nComplete ${res.details.remaining} more to unlock this reward.`,
+            required: res.details.required,
+            current: res.details.current,
+            remaining: res.details.remaining,
+            noun: res.details.noun
+          })
+        } else {
+          setQuestError({ title: "VERIFICATION FAILED", description: res.error })
+        }
+        return
+      }
+      
+      const challenge = challenges.find(c => c.id === id)
+      if (challenge) {
+        setQuestSuccess({
+          title: challenge.challenge.name,
+          xp: challenge.challenge.xpReward,
+          gold: challenge.challenge.goldReward
         })
       }
-      return
+      
+      setChallenges(prev => prev.map(c => c.id === id ? { ...c, status: 'CLAIMED', completedAt: new Date().toISOString().split('T')[0] } : c))
+      router.refresh()
+      setTimeout(() => setQuestSuccess(null), 3000)
+    } finally {
+      setIsSubmitting(null)
     }
-    
-    const challenge = challenges.find(c => c.id === id)
-    if (challenge) {
-      setQuestSuccess({
-        title: challenge.challenge.name,
-        xp: challenge.challenge.xpReward,
-        gold: challenge.challenge.goldReward
-      })
-    }
-    
-    setChallenges(prev => prev.map(c => c.id === id ? { ...c, status: 'CLAIMED', completedAt: new Date().toISOString() } : c))
-    router.refresh()
   }
 
   const getAttrColor = (category: string) => {
     switch (category) {
-      case 'INTELLECT': return 'text-blue-400 border-blue-400'
-      case 'STRENGTH': return 'text-red-400 border-red-400'
-      case 'DISCIPLINE': return 'text-green-400 border-green-400'
-      case 'CREATIVITY': return 'text-purple-400 border-purple-400'
-      case 'FOCUS': return 'text-yellow-400 border-yellow-400'
-      default: return 'text-gray-400 border-gray-400'
+      case 'INTELLECT': return 'text-blue-400 border-blue-400 bg-blue-400/10'
+      case 'STRENGTH': return 'text-red-400 border-red-400 bg-red-400/10'
+      case 'DISCIPLINE': return 'text-green-400 border-green-400 bg-green-400/10'
+      case 'CREATIVITY': return 'text-purple-400 border-purple-400 bg-purple-400/10'
+      case 'FOCUS': return 'text-yellow-400 border-yellow-400 bg-yellow-400/10'
+      default: return 'text-gray-400 border-gray-400 bg-gray-400/10'
     }
   }
 
@@ -226,231 +244,229 @@ export default function QuestBoardClient({
       return true;
     });
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
     const activeQ = filteredQuests.filter(q => q.status === 'PENDING' && q.type !== 'SYSTEM');
-    const systemQ = filteredQuests.filter(q => q.type === 'SYSTEM');
-    const completedQ = filteredQuests.filter(q => q.status === 'COMPLETED' || q.status === 'CLAIMED');
-    
-    const activeC = filteredChallenges.filter(c => c.status === 'AVAILABLE');
+    const activeC = filteredChallenges.filter(c => c.status !== 'COMPLETED' && c.status !== 'CLAIMED');
+
+    const availableQ = filteredQuests.filter(q => q.type === 'SYSTEM');
+
+    const completedQ = filteredQuests.filter(q => (q.status === 'COMPLETED' || q.status === 'CLAIMED') && q.type !== 'SYSTEM');
     const completedC = filteredChallenges.filter(c => c.status === 'COMPLETED' || c.status === 'CLAIMED');
 
-    if (tab === 'ALL') {
-      return { quests: [...activeQ, ...systemQ], challenges: activeC };
-    }
-    if (tab === 'TODAY') {
-      const todayQ = activeQ.filter(q => {
-        if (!q.dueDate) return false;
-        const due = new Date(q.dueDate);
-        due.setHours(0,0,0,0);
-        return due.getTime() === today.getTime();
-      });
-      return { quests: todayQ, challenges: activeC };
-    }
-    if (tab === 'PERSONAL') {
-      return { quests: activeQ, challenges: [] };
-    }
-    if (tab === 'SYSTEM') {
-      return { quests: systemQ, challenges: activeC };
-    }
-    if (tab === 'COMPLETED') {
-      return { quests: completedQ, challenges: completedC };
-    }
+    if (tab === 'ACTIVE') return { quests: activeQ, challenges: activeC };
+    if (tab === 'AVAILABLE') return { quests: availableQ, challenges: [] };
+    if (tab === 'COMPLETED') return { quests: completedQ, challenges: completedC };
+    
     return { quests: [], challenges: [] };
   }, [quests, challenges, tab, attributeFilter]);
 
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-8 min-h-screen bg-[#05050A] text-white">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-4xl font-bold glow-text text-[var(--primary)] flex items-center gap-3">
-            <Shield className="w-10 h-10" />
-            Quest Board
-          </h1>
-          <p className="text-[var(--secondary)] mt-2">Manage your journey and earn rewards.</p>
-        </div>
-        
-        <button 
-          onClick={openCreateModal}
-          className="flex items-center gap-2 bg-[var(--primary)] hover:bg-opacity-80 px-6 py-3 rounded-md font-bold transition-all shadow-[0_0_15px_rgba(138,43,226,0.5)]"
-        >
-          <Plus className="w-5 h-5" />
-          Create Quest
-        </button>
-      </div>
-      
-      {/* Filters & Tabs */}
-      <div className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          {CATEGORIES.map(c => (
-            <button 
-              key={c}
-              onClick={() => setAttributeFilter(c)}
-              className={`px-3 py-1 text-sm rounded-full border transition-all ${
-                attributeFilter === c 
-                  ? 'bg-gray-800 border-white text-white font-bold' 
-                  : 'border-gray-800 text-gray-500 hover:text-gray-300'
-              }`}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-        
-        <div className="flex gap-4 border-b border-gray-800 pb-2 overflow-x-auto">
+    <div className="space-y-8">
+      {/* Header Actions */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-900/50 p-4 rounded-xl border border-white/5">
+        {/* Navigation Tabs */}
+        <div className="flex bg-black/40 rounded-lg p-1 w-full md:w-auto overflow-x-auto">
           {TABS.map(t => (
             <button 
               key={t}
               onClick={() => setTab(t)}
-              className={`px-4 py-2 font-bold transition-colors whitespace-nowrap ${
+              className={`flex-1 md:flex-none px-6 py-2.5 text-sm font-bold tracking-wider rounded-md transition-all whitespace-nowrap ${
                 tab === t 
-                  ? 'text-[var(--primary)] border-b-2 border-[var(--primary)]' 
-                  : 'text-gray-500 hover:text-gray-300'
+                  ? 'bg-[var(--primary)] text-white shadow-lg' 
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
               }`}
             >
               {t}
             </button>
           ))}
         </div>
+        
+        <button 
+          onClick={openCreateModal}
+          className="flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white px-6 py-2.5 rounded-lg font-bold transition-all border border-white/10"
+        >
+          <Plus className="w-4 h-4" />
+          NEW QUEST
+        </button>
+      </div>
+      
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2">
+        {CATEGORIES.map(c => (
+          <button 
+            key={c}
+            onClick={() => setAttributeFilter(c)}
+            className={`px-4 py-1.5 text-xs font-bold tracking-widest rounded-full border transition-all ${
+              attributeFilter === c 
+                ? 'bg-white text-black border-white' 
+                : 'border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500'
+            }`}
+          >
+            {c}
+          </button>
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <AnimatePresence>
+      {/* Quest Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
+        <AnimatePresence mode="popLayout">
+          {/* Challenges Rendering */}
           {filteredItems.challenges.map((uc) => (
              <motion.div 
                key={uc.id}
                layout
-               initial={{ opacity: 0, scale: 0.9 }}
-               animate={{ opacity: 1, scale: 1 }}
-               exit={{ opacity: 0, scale: 0.9 }}
-               className={`glass-panel p-6 rounded-xl flex flex-col justify-between border-2 shadow-lg
-                 ${uc.status === 'COMPLETED' ? 'border-gray-800 opacity-60' : 'border-yellow-500/50 shadow-yellow-500/20'}`}
+               initial={{ opacity: 0, y: 20 }}
+               animate={{ opacity: 1, y: 0 }}
+               exit={{ opacity: 0, scale: 0.95 }}
+               className="bg-[#0a0a0f] border border-yellow-500/30 rounded-xl overflow-hidden shadow-lg shadow-yellow-500/5 flex flex-col"
              >
-               <div>
-                 <div className="flex justify-between items-start mb-4">
-                   <span className="text-xs font-bold px-2 py-1 rounded-full border border-yellow-500 text-yellow-500 bg-yellow-500/10">
-                     ◆ SYSTEM CHALLENGE
-                   </span>
-                   <span className="text-2xl">{uc.challenge.icon}</span>
+               <div className="p-5 flex-1">
+                 <div className="flex justify-between items-start mb-3">
+                   <div className="flex items-center gap-2">
+                     <Target className="w-4 h-4 text-yellow-500" />
+                     <span className="text-[10px] font-black tracking-widest text-yellow-500 uppercase">System Challenge</span>
+                   </div>
+                   <span className="text-2xl" aria-hidden="true">{uc.challenge.icon}</span>
                  </div>
                  
-                 <h3 className="text-xl font-bold mb-2 text-yellow-100">{uc.challenge.name}</h3>
+                 <h3 className="text-lg font-bold text-white mb-2 leading-tight">{uc.challenge.name}</h3>
                  <p className="text-gray-400 text-sm mb-4">{uc.challenge.description}</p>
                  
-                 <div className="flex flex-wrap gap-2 text-xs text-gray-300 mb-4">
-                   <span className={`px-2 py-1 rounded border ${getAttrColor(uc.challenge.category)} bg-gray-900`}>
+                 <div className="flex flex-wrap gap-2 text-[10px] font-bold tracking-widest uppercase">
+                   <span className={`px-2.5 py-1 rounded-sm border ${getAttrColor(uc.challenge.category)}`}>
                      {uc.challenge.category}
                    </span>
-                   <span className="flex items-center gap-1 bg-gray-900 px-2 py-1 rounded">
+                   <span className="px-2.5 py-1 rounded-sm border border-gray-700 text-gray-400 bg-gray-800/50">
                      {uc.challenge.type}
                    </span>
                  </div>
                </div>
 
-               <div className="mt-4 pt-4 border-t border-gray-800/50 flex justify-between items-center">
-                 <div className="flex gap-4">
-                   <span className="text-[var(--primary)] font-bold flex items-center gap-1"><Sparkles className="w-4 h-4" /> {uc.challenge.xpReward} XP</span>
-                   <span className="text-yellow-400 font-bold flex items-center gap-1">🪙 {uc.challenge.goldReward}</span>
+               <div className="bg-black/40 p-4 border-t border-yellow-500/10">
+                 <div className="flex justify-between items-center mb-4">
+                   <span className="text-[var(--primary)] font-bold flex items-center gap-1.5 text-sm">
+                     <Sparkles className="w-4 h-4" /> {uc.challenge.xpReward} XP
+                   </span>
+                   <span className="text-yellow-400 font-bold flex items-center gap-1.5 text-sm">
+                     <span className="text-lg leading-none">dYT</span> {uc.challenge.goldReward}
+                   </span>
                  </div>
                  
-                 {uc.status === 'AVAILABLE' && (
+                 {uc.status === 'AVAILABLE' ? (
                    <button 
                      onClick={() => handleClaimChallenge(uc.id)}
-                     className="bg-yellow-600/20 hover:bg-yellow-600/40 text-yellow-400 px-4 py-2 rounded font-bold transition-all border border-yellow-600/50 hover:shadow-[0_0_15px_rgba(234,179,8,0.4)]"
+                     disabled={isSubmitting !== null}
+                     className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed text-black py-2.5 rounded-lg font-bold text-sm tracking-widest transition-colors flex justify-center items-center gap-2"
                    >
-                     Claim
+                     {isSubmitting === uc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : 'CHECK PROGRESS'}
                    </button>
-                 )}
-                 {uc.status === 'COMPLETED' && (
-                   <div className="text-sm text-gray-500">Completed</div>
+                 ) : (
+                   <div className="w-full text-center bg-gray-900/50 text-gray-500 py-2.5 rounded-lg font-bold text-sm tracking-widest border border-gray-800">
+                     COMPLETED {uc.completedAt ? `(${uc.completedAt})` : ''}
+                   </div>
                  )}
                </div>
              </motion.div>
           ))}
 
+          {/* Quests Rendering */}
           {filteredItems.quests.map((quest) => (
             <motion.div 
               key={quest.id}
               layout
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className={`glass-panel p-6 rounded-xl flex flex-col justify-between ${(quest.status === 'COMPLETED' || quest.status === 'CLAIMED') ? 'border-gray-800 opacity-60' : 'glow-border'}`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className={`bg-[#0a0a0f] border rounded-xl overflow-hidden shadow-lg flex flex-col transition-colors ${
+                (quest.status === 'COMPLETED' || quest.status === 'CLAIMED') 
+                  ? 'border-gray-800/50 opacity-60' 
+                  : 'border-white/10 hover:border-white/20'
+              }`}
             >
-              <div>
-                <div className="flex justify-between items-start mb-4">
-                  <span className={`text-xs font-bold px-2 py-1 rounded-full border ${getAttrColor(quest.category)}`}>
-                    {quest.category}
-                  </span>
-                  {quest.type === 'SYSTEM' ? (
-                    <span className="text-[10px] font-black tracking-widest text-gray-500 uppercase border border-gray-700 px-2 py-1 rounded">SYSTEM</span>
-                  ) : quest.status === 'PENDING' ? (
-                    <div className="flex gap-2">
-                      <button onClick={() => openEditModal(quest)} className="text-gray-400 hover:text-white transition-colors" aria-label="Edit Quest">
-                        <Edit2 className="w-4 h-4" />
+              <div className="p-5 flex-1">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-center gap-2">
+                    <Sword className={`w-4 h-4 ${quest.type === 'SYSTEM' ? 'text-blue-400' : 'text-gray-400'}`} />
+                    <span className="text-[10px] font-black tracking-widest text-gray-400 uppercase">
+                      {quest.type === 'SYSTEM' ? 'System Quest' : 'Personal Quest'}
+                    </span>
+                  </div>
+                  
+                  {quest.status === 'PENDING' && quest.type !== 'SYSTEM' && (
+                    <div className="flex gap-1">
+                      <button onClick={() => openEditModal(quest)} disabled={isSubmitting !== null} className="p-1.5 text-gray-500 hover:text-white transition-colors rounded-md hover:bg-white/5" aria-label="Edit">
+                        <Edit2 className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => handleDelete(quest.id)} className="text-gray-400 hover:text-red-500 transition-colors" aria-label="Delete Quest">
-                        <Trash2 className="w-4 h-4" />
+                      <button onClick={() => handleDelete(quest.id)} disabled={isSubmitting !== null} className="p-1.5 text-gray-500 hover:text-red-400 transition-colors rounded-md hover:bg-red-400/10" aria-label="Abandon">
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                  ) : (
-                    <button onClick={() => handleDelete(quest.id)} className="text-gray-500 hover:text-red-500 transition-colors" aria-label="Delete Completed Quest">
-                      <Trash2 className="w-4 h-4" />
+                  )}
+                  {(quest.status === 'COMPLETED' || quest.status === 'CLAIMED') && (
+                    <button onClick={() => handleDelete(quest.id)} disabled={isSubmitting !== null} className="p-1.5 text-gray-600 hover:text-red-400 transition-colors rounded-md" aria-label="Delete">
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
                 
-                <h3 className={`text-xl font-bold mb-2 ${(quest.status === 'COMPLETED' || quest.status === 'CLAIMED') ? 'line-through text-gray-400' : ''}`}>{quest.title}</h3>
-                {quest.description && <p className="text-gray-400 text-sm mb-4 line-clamp-3">{quest.description}</p>}
+                <h3 className={`text-lg font-bold mb-2 leading-tight ${
+                  (quest.status === 'COMPLETED' || quest.status === 'CLAIMED') ? 'line-through text-gray-500' : 'text-white'
+                }`}>{quest.title}</h3>
                 
-                <div className="flex flex-wrap gap-2 text-xs text-gray-300 mb-4">
-                  <span className="flex items-center gap-1 bg-gray-800/50 px-2 py-1 rounded">
+                {quest.description && (
+                  <p className="text-gray-400 text-sm mb-4 line-clamp-2">{quest.description}</p>
+                )}
+                
+                <div className="flex flex-wrap gap-2 text-[10px] font-bold tracking-widest uppercase">
+                  <span className={`px-2.5 py-1 rounded-sm border ${getAttrColor(quest.category)}`}>
+                    {quest.category}
+                  </span>
+                  <span className="px-2.5 py-1 rounded-sm border border-gray-700 text-gray-400 bg-gray-800/50 flex items-center gap-1">
                     <Shield className="w-3 h-3" /> {quest.difficulty}
                   </span>
                   {quest.duration && (
-                    <span className="flex items-center gap-1 bg-gray-800/50 px-2 py-1 rounded">
+                    <span className="px-2.5 py-1 rounded-sm border border-gray-700 text-gray-400 bg-gray-800/50 flex items-center gap-1">
                       <Clock className="w-3 h-3" /> {quest.duration}m
                     </span>
                   )}
                   {quest.dueDate && (
-                    <span className="flex items-center gap-1 bg-gray-800/50 px-2 py-1 rounded">
-                      <Calendar className="w-3 h-3" /> {new Date(quest.dueDate).toLocaleDateString()}
-                    </span>
-                  )}
-                  {quest.isRecurring && (
-                    <span className="flex items-center gap-1 bg-gray-800/50 px-2 py-1 rounded text-blue-300">
-                      <RefreshCw className="w-3 h-3" /> {quest.recurringInterval}
+                    <span className="px-2.5 py-1 rounded-sm border border-blue-900/50 text-blue-400 bg-blue-900/20 flex items-center gap-1">
+                      <Calendar className="w-3 h-3" /> {quest.dueDate}
                     </span>
                   )}
                 </div>
               </div>
 
-              <div className="mt-4 pt-4 border-t border-gray-800 flex justify-between items-center">
-                <div className="flex gap-4">
-                  <span className="text-[var(--primary)] font-bold flex items-center gap-1"><Sparkles className="w-4 h-4" /> {quest.xpReward} XP</span>
-                  <span className="text-yellow-400 font-bold flex items-center gap-1">🪙 {quest.goldReward}</span>
+              <div className="bg-black/40 p-4 border-t border-white/5">
+                <div className="flex justify-between items-center mb-4">
+                  <span className="text-[var(--primary)] font-bold flex items-center gap-1.5 text-sm">
+                    <Sparkles className="w-4 h-4" /> {quest.xpReward} XP
+                  </span>
+                  <span className="text-yellow-400 font-bold flex items-center gap-1.5 text-sm">
+                    <span className="text-lg leading-none">dYT</span> {quest.goldReward}
+                  </span>
                 </div>
                 
                 {quest.type === 'SYSTEM' ? (
                   <button 
                     onClick={() => handleAcceptSystemQuest(quest.id)}
-                    className="bg-[var(--primary)] hover:bg-opacity-80 text-white px-4 py-2 text-sm font-bold tracking-widest rounded-md transition-all shadow-[0_0_10px_rgba(138,43,226,0.3)]"
+                    disabled={isSubmitting !== null}
+                    className="w-full bg-[var(--primary)] hover:bg-opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg font-bold text-sm tracking-widest transition-colors flex justify-center items-center gap-2"
                   >
-                    ACCEPT QUEST
+                    {isSubmitting === quest.id ? <Loader2 className="w-4 h-4 animate-spin" /> : 'ACCEPT QUEST'}
                   </button>
-                  ) : quest.status === 'PENDING' && (
-                    <button 
-                      onClick={() => handleComplete(quest.id)}
-                      className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 text-sm font-bold tracking-widest rounded-md transition-all shadow-[0_0_10px_rgba(34,197,94,0.4)] flex items-center gap-2"
-                      aria-label="Complete Quest"
-                    >
-                      <CheckCircle2 className="w-5 h-5" /> COMPLETE
-                    </button>
-                  )}
-                {(quest.status === 'COMPLETED' || quest.status === 'CLAIMED') && (
-                  <div className="text-sm text-gray-500">
-                    Completed on: {quest.completedAt ? new Date(quest.completedAt).toLocaleDateString() : ''}
+                ) : quest.status === 'PENDING' ? (
+                  <button 
+                    onClick={() => handleComplete(quest.id)}
+                    disabled={isSubmitting !== null}
+                    className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg font-bold text-sm tracking-widest transition-colors flex justify-center items-center gap-2"
+                  >
+                    {isSubmitting === quest.id ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                      <><CheckCircle2 className="w-4 h-4" /> COMPLETE</>
+                    )}
+                  </button>
+                ) : (
+                  <div className="w-full text-center bg-gray-900/50 text-gray-500 py-2.5 rounded-lg font-bold text-sm tracking-widest border border-gray-800">
+                    COMPLETED {quest.completedAt ? `(${quest.completedAt})` : ''}
                   </div>
                 )}
               </div>
@@ -458,209 +474,131 @@ export default function QuestBoardClient({
           ))}
           
           {filteredItems.quests.length === 0 && filteredItems.challenges.length === 0 && (
-            <div className="col-span-full py-20 text-center text-gray-500 glass-panel rounded-xl">
-              <Shield className="w-16 h-16 mx-auto mb-4 opacity-50" />
-              <p className="text-xl">Nothing found.</p>
-              <p>Try changing filters or forge a new path.</p>
-            </div>
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              className="col-span-full py-24 flex flex-col items-center justify-center text-gray-500 border border-dashed border-gray-800 rounded-2xl"
+            >
+              <Shield className="w-12 h-12 mb-4 opacity-20" />
+              <p className="text-lg font-bold tracking-widest uppercase mb-1">No Quests Found</p>
+              <p className="text-sm">Change your filters or accept new quests.</p>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
 
+      {/* Modals & Notifications */}
       <AnimatePresence>
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
             <motion.div 
-              initial={{ opacity: 0, y: 50 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 50 }}
-              className="glass-panel glow-border w-full max-w-2xl rounded-xl p-6 md:p-8 max-h-[90vh] overflow-y-auto"
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-[#0a0a0f] border border-white/10 w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl"
             >
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold glow-text">{editingQuest ? 'Edit Quest' : 'New Quest'}</h2>
-                <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-white" aria-label="Close modal">
-                  <X className="w-6 h-6" />
+              <div className="flex justify-between items-center p-6 border-b border-white/5">
+                <h2 className="text-xl font-bold tracking-widest uppercase">{editingQuest ? 'Edit Quest' : 'New Quest'}</h2>
+                <button onClick={() => setIsModalOpen(false)} disabled={isModalSubmitting} className="text-gray-500 hover:text-white transition-colors">
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <form action={handleAction} className="space-y-4">
+              <form action={handleAction} className="p-6 space-y-5">
                 <div>
-                  <label htmlFor="title" className="block text-sm font-medium mb-1 text-gray-300">Quest Title *</label>
-                  <input type="text" id="title" name="title" defaultValue={editingQuest?.title} required className="w-full bg-gray-900 border border-gray-700 rounded-md p-3 text-white focus:outline-none focus:border-[var(--primary)]" />
+                  <label htmlFor="title" className="block text-xs font-bold tracking-widest text-gray-400 uppercase mb-2">Quest Title *</label>
+                  <input type="text" id="title" name="title" defaultValue={editingQuest?.title} required className="w-full bg-black border border-white/10 rounded-lg p-3 text-white focus:outline-none focus:border-[var(--primary)] transition-colors" placeholder="Enter quest objective..." />
                 </div>
                 
                 <div>
-                  <label htmlFor="description" className="block text-sm font-medium mb-1 text-gray-300">Description</label>
-                  <textarea id="description" name="description" defaultValue={editingQuest?.description || ''} rows={3} className="w-full bg-gray-900 border border-gray-700 rounded-md p-3 text-white focus:outline-none focus:border-[var(--primary)]" />
+                  <label htmlFor="description" className="block text-xs font-bold tracking-widest text-gray-400 uppercase mb-2">Description</label>
+                  <textarea id="description" name="description" defaultValue={editingQuest?.description || ''} rows={3} className="w-full bg-black border border-white/10 rounded-lg p-3 text-white focus:outline-none focus:border-[var(--primary)] transition-colors resize-none" placeholder="Add optional details..." />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="category" className="block text-sm font-medium mb-1 text-gray-300">Attribute Category *</label>
-                    <select id="category" name="category" defaultValue={editingQuest?.category || 'INTELLECT'} required className="w-full bg-gray-900 border border-gray-700 rounded-md p-3 text-white focus:outline-none focus:border-[var(--primary)]">
-                      {CATEGORIES.filter(c => c !== 'ALL').map(c => <option key={c} value={c}>{c}</option>)}
+                    <label htmlFor="category" className="block text-xs font-bold tracking-widest text-gray-400 uppercase mb-2">Attribute *</label>
+                    <select id="category" name="category" defaultValue={editingQuest?.category || 'INTELLECT'} required className="w-full bg-black border border-white/10 rounded-lg p-3 text-white focus:outline-none focus:border-[var(--primary)] transition-colors">
+                      {CATEGORIES.filter(c => c !== 'ALL').map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
-                    <label htmlFor="difficulty" className="block text-sm font-medium mb-1 text-gray-300">Difficulty *</label>
-                    <select id="difficulty" name="difficulty" defaultValue={editingQuest?.difficulty || 'EASY'} required className="w-full bg-gray-900 border border-gray-700 rounded-md p-3 text-white focus:outline-none focus:border-[var(--primary)]">
-                      {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="duration" className="block text-sm font-medium mb-1 text-gray-300">Est. Duration (minutes)</label>
-                    <input type="number" id="duration" name="duration" defaultValue={editingQuest?.duration || ''} min="1" className="w-full bg-gray-900 border border-gray-700 rounded-md p-3 text-white focus:outline-none focus:border-[var(--primary)]" />
-                  </div>
-                  <div>
-                    <label htmlFor="dueDate" className="block text-sm font-medium mb-1 text-gray-300">Due Date</label>
-                    <input type="date" id="dueDate" name="dueDate" defaultValue={editingQuest?.dueDate ? editingQuest.dueDate.split('T')[0] : ''} className="w-full bg-gray-900 border border-gray-700 rounded-md p-3 text-white focus:outline-none focus:border-[var(--primary)]" />
-                  </div>
-                </div>
-
-                <div className="p-4 bg-gray-900/50 border border-gray-700 rounded-md space-y-3">
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" id="isRecurring" name="isRecurring" value="true" defaultChecked={editingQuest?.isRecurring} className="w-4 h-4 accent-[var(--primary)]" />
-                    <label htmlFor="isRecurring" className="text-sm font-medium text-gray-300">Recurring Quest</label>
-                  </div>
-                  <div>
-                    <label htmlFor="recurringInterval" className="block text-sm font-medium mb-1 text-gray-400">Interval</label>
-                    <select id="recurringInterval" name="recurringInterval" defaultValue={editingQuest?.recurringInterval || ''} className="w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-sm text-white focus:outline-none focus:border-[var(--primary)]">
-                      <option value="">None</option>
-                      <option value="DAILY">Daily</option>
-                      <option value="WEEKLY">Weekly</option>
-                      <option value="MONTHLY">Monthly</option>
+                    <label htmlFor="difficulty" className="block text-xs font-bold tracking-widest text-gray-400 uppercase mb-2">Difficulty *</label>
+                    <select id="difficulty" name="difficulty" defaultValue={editingQuest?.difficulty || 'EASY'} required className="w-full bg-black border border-white/10 rounded-lg p-3 text-white focus:outline-none focus:border-[var(--primary)] transition-colors">
+                      {['EASY', 'MEDIUM', 'HARD', 'EPIC'].map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-4 mt-8 pt-4 border-t border-gray-800">
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2 rounded-md font-bold text-gray-300 hover:text-white transition-colors">
-                    Cancel
-                  </button>
-                  <button type="submit" className="px-6 py-2 bg-[var(--primary)] hover:bg-opacity-80 rounded-md font-bold text-white transition-colors shadow-[0_0_10px_rgba(138,43,226,0.3)]">
-                    {editingQuest ? 'Save Changes' : 'Create Quest'}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="duration" className="block text-xs font-bold tracking-widest text-gray-400 uppercase mb-2">Duration (min)</label>
+                    <input type="number" id="duration" name="duration" defaultValue={editingQuest?.duration || ''} min="1" className="w-full bg-black border border-white/10 rounded-lg p-3 text-white focus:outline-none focus:border-[var(--primary)] transition-colors" placeholder="e.g. 30" />
+                  </div>
+                  <div>
+                    <label htmlFor="dueDate" className="block text-xs font-bold tracking-widest text-gray-400 uppercase mb-2">Due Date</label>
+                    <input type="date" id="dueDate" name="dueDate" defaultValue={editingQuest?.dueDate || ''} className="w-full bg-black border border-white/10 rounded-lg p-3 text-white focus:outline-none focus:border-[var(--primary)] transition-colors" />
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-white/5">
+                  <button type="submit" disabled={isModalSubmitting} className="w-full bg-[var(--primary)] hover:bg-opacity-90 disabled:opacity-50 text-white font-bold tracking-widest text-sm uppercase py-3.5 rounded-lg transition-all flex items-center justify-center gap-2">
+                    {isModalSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : (editingQuest ? 'SAVE CHANGES' : 'FORGE QUEST')}
                   </button>
                 </div>
               </form>
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
 
-      <AnimatePresence>
-        {celebration && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.5, y: 100 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 1.5, y: -100 }}
-            className="fixed inset-0 z-[100] pointer-events-none flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm"
-          >
-            <div className="bg-[#0a0a1a] border-2 border-[var(--primary)] p-10 rounded-2xl shadow-[0_0_50px_rgba(138,43,226,0.6)] text-center">
-              <h2 className="text-4xl font-black mb-4 text-white glow-text uppercase tracking-wider">Quest Complete!</h2>
-              <div className="flex justify-center gap-8 mb-6">
-                <div className="flex flex-col items-center">
-                  <span className="text-5xl font-bold text-[var(--primary)] drop-shadow-[0_0_10px_rgba(138,43,226,0.8)]">+{celebration.xp}</span>
-                  <span className="text-xl text-gray-300 mt-2 font-bold tracking-widest">XP</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-5xl font-bold text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.8)]">+{celebration.gold}</span>
-                  <span className="text-xl text-gray-300 mt-2 font-bold tracking-widest">GOLD</span>
-                </div>
-              </div>
-              {celebration.category !== 'ALL' && (
-                <p className="text-[var(--secondary)] font-bold text-xl uppercase tracking-widest">+1 {celebration.category}</p>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {levelUp && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 2 }}
-            className="fixed inset-0 z-[110] pointer-events-none flex flex-col items-center justify-center bg-[var(--primary)]/20 backdrop-blur-md"
-          >
-            <div className="text-center">
-              <h1 className="text-7xl font-black text-white glow-text mb-4 drop-shadow-[0_0_30px_rgba(255,255,255,1)]">LEVEL UP!</h1>
-              <p className="text-5xl font-bold text-yellow-400 drop-shadow-[0_0_20px_rgba(250,204,21,1)]">You are now Level {levelUp}</p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
         {questError && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-[#0a0a1a] border border-[var(--primary)]/50 p-8 rounded-xl shadow-[0_0_40px_rgba(138,43,226,0.2)] text-center max-w-sm w-full relative overflow-hidden"
+              initial={{ opacity: 0, scale: 0.9 }} 
+              animate={{ opacity: 1, scale: 1 }} 
+              className="bg-[#0a0a0f] border border-red-500/30 p-8 rounded-2xl max-w-sm w-full text-center shadow-2xl shadow-red-500/10"
             >
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[var(--primary)] to-transparent opacity-50" />
-              
-              <h2 className="text-xl font-bold mb-6 text-red-400 tracking-widest">{questError.title}</h2>
-              
-              <p className="text-gray-300 text-sm whitespace-pre-wrap mb-8 leading-relaxed">
-                {questError.description}
-              </p>
-              
+              <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+              <h3 className="text-xl font-black tracking-widest text-white mb-2">{questError.title}</h3>
+              <p className="text-gray-400 text-sm whitespace-pre-wrap mb-6">{questError.description}</p>
               <button 
                 onClick={() => setQuestError(null)}
-                className="w-full px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg font-bold text-white transition-colors"
+                className="w-full bg-white/10 hover:bg-white/20 text-white font-bold tracking-widest text-sm py-3 rounded-lg transition-colors"
               >
-                GOT IT
+                ACKNOWLEDGE
               </button>
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
 
-      <AnimatePresence>
         {questSuccess && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="fixed bottom-8 right-8 z-50">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-[#0a0a1a] border border-[var(--primary)]/50 p-8 rounded-xl shadow-[0_0_40px_rgba(138,43,226,0.3)] text-center max-w-sm w-full relative overflow-hidden"
+              initial={{ opacity: 0, y: 20, scale: 0.9 }} 
+              animate={{ opacity: 1, y: 0, scale: 1 }} 
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-[#0a0a0f] border border-green-500/30 p-6 rounded-xl shadow-2xl shadow-green-500/10 flex items-center gap-4"
             >
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[var(--primary)] to-transparent opacity-50" />
-              
-              <h2 className="text-2xl font-black mb-2 text-white glow-text uppercase tracking-wider">QUEST COMPLETE</h2>
-              <p className="text-[var(--primary)] font-bold tracking-widest mb-6">{questSuccess.title}</p>
-              
-              <div className="flex justify-center gap-6 mb-8">
-                <div className="flex flex-col items-center">
-                  <span className="text-3xl font-bold text-white">+{questSuccess.xp}</span>
-                  <span className="text-xs text-gray-500 mt-1 font-bold tracking-widest">XP</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-3xl font-bold text-yellow-400">+{questSuccess.gold}</span>
-                  <span className="text-xs text-gray-500 mt-1 font-bold tracking-widest">GOLD</span>
-                </div>
+              <div className="bg-green-500/20 p-3 rounded-full">
+                <CheckCircle2 className="w-6 h-6 text-green-500" />
               </div>
-              
-              <div className="text-emerald-400 font-bold text-sm flex items-center justify-center gap-2 mb-8">
-                <CheckCircle2 className="w-5 h-5" /> REWARD CLAIMED
+              <div>
+                <h3 className="font-bold text-white leading-tight">{questSuccess.title}</h3>
+                {(questSuccess.xp > 0 || questSuccess.gold > 0) && (
+                  <p className="text-sm text-gray-400 mt-1 flex gap-3">
+                    {questSuccess.xp > 0 && <span className="text-[var(--primary)] font-bold">+{questSuccess.xp} XP</span>}
+                    {questSuccess.gold > 0 && <span className="text-yellow-400 font-bold">+{questSuccess.gold} Gold</span>}
+                  </p>
+                )}
               </div>
-              
-              <button 
-                onClick={() => setQuestSuccess(null)}
-                className="w-full px-6 py-3 bg-[var(--primary)] hover:bg-opacity-80 rounded-lg font-bold text-white transition-colors shadow-[0_0_15px_rgba(138,43,226,0.4)]"
-              >
-                GOT IT
-              </button>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
-
     </div>
   )
 }

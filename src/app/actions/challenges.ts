@@ -83,25 +83,23 @@ export async function getUserChallenges() {
   if (!session?.user?.id) return { error: "Unauthorized" };
 
   const userId = session.user.id;
-  await initializeSystemChallenges();
+  
+  let allSystemChallenges = await prisma.systemChallenge.findMany();
 
-  const allSystemChallenges = await prisma.systemChallenge.findMany();
+  if (allSystemChallenges.length !== SYSTEM_CHALLENGES.length) {
+    await initializeSystemChallenges();
+    allSystemChallenges = await prisma.systemChallenge.findMany();
+  }
 
-  for (const challenge of allSystemChallenges) {
-    await prisma.userChallenge.upsert({
-      where: {
-        userId_challengeId: {
-          userId,
-          challengeId: challenge.id,
-        },
-      },
-      update: {},
-      create: {
+  if (allSystemChallenges.length > 0) {
+    await prisma.userChallenge.createMany({
+      data: allSystemChallenges.map(c => ({
         userId,
-        challengeId: challenge.id,
+        challengeId: c.id,
         status: "AVAILABLE",
         progress: 0,
-      },
+      })),
+      skipDuplicates: true,
     });
   }
 

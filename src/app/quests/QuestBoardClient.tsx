@@ -19,18 +19,18 @@ type Quest = {
   goldReward: number
   status: string
   type: string
-  dueDate: Date | null
+  dueDate: string | null
   isRecurring: boolean
   recurringInterval: string | null
-  createdAt: Date
-  completedAt: Date | null
+  createdAt: string
+  completedAt: string | null
 }
 
 type UserChallenge = {
   id: string
   status: string
   progress: number
-  completedAt: Date | null
+  completedAt: string | null
   challenge: {
     id: string
     key: string
@@ -134,7 +134,7 @@ export default function QuestBoardClient({
         setLevelUp(res.levelUp)
       }
       
-      setQuests(prev => prev.map(q => q.id === id ? { ...q, status: 'CLAIMED', completedAt: new Date() } : q))
+      setQuests(prev => prev.map(q => q.id === id ? { ...q, status: 'CLAIMED', completedAt: new Date().toISOString() } : q))
       router.refresh() // Invalidate Next.js client router cache
       
       setTimeout(() => {
@@ -200,7 +200,7 @@ export default function QuestBoardClient({
       })
     }
     
-    setChallenges(prev => prev.map(c => c.id === id ? { ...c, status: 'CLAIMED', completedAt: new Date() } : c))
+    setChallenges(prev => prev.map(c => c.id === id ? { ...c, status: 'CLAIMED', completedAt: new Date().toISOString() } : c))
     router.refresh()
   }
 
@@ -415,7 +415,7 @@ export default function QuestBoardClient({
                   )}
                   {quest.dueDate && (
                     <span className="flex items-center gap-1 bg-gray-800/50 px-2 py-1 rounded">
-                      <Calendar className="w-3 h-3" /> {quest.dueDate.toLocaleDateString()}
+                      <Calendar className="w-3 h-3" /> {new Date(quest.dueDate).toLocaleDateString()}
                     </span>
                   )}
                   {quest.isRecurring && (
@@ -450,7 +450,7 @@ export default function QuestBoardClient({
                   )}
                 {(quest.status === 'COMPLETED' || quest.status === 'CLAIMED') && (
                   <div className="text-sm text-gray-500">
-                    Completed on: {quest.completedAt?.toLocaleDateString()}
+                    Completed on: {quest.completedAt ? new Date(quest.completedAt).toLocaleDateString() : ''}
                   </div>
                 )}
               </div>
@@ -516,7 +516,7 @@ export default function QuestBoardClient({
                   </div>
                   <div>
                     <label htmlFor="dueDate" className="block text-sm font-medium mb-1 text-gray-300">Due Date</label>
-                    <input type="date" id="dueDate" name="dueDate" defaultValue={editingQuest?.dueDate ? editingQuest.dueDate.toISOString().split('T')[0] : ''} className="w-full bg-gray-900 border border-gray-700 rounded-md p-3 text-white focus:outline-none focus:border-[var(--primary)]" />
+                    <input type="date" id="dueDate" name="dueDate" defaultValue={editingQuest?.dueDate ? editingQuest.dueDate.split('T')[0] : ''} className="w-full bg-gray-900 border border-gray-700 rounded-md p-3 text-white focus:outline-none focus:border-[var(--primary)]" />
                   </div>
                 </div>
 

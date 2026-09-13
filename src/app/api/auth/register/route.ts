@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
+import crypto from "crypto"
 import { NextResponse } from "next/server"
+
+bcrypt.setRandomFallback((len) => Array.from(crypto.randomBytes(len)))
 
 export async function POST(req: Request) {
   try {

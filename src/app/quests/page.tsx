@@ -27,21 +27,23 @@ export default async function QuestsPage(props: {
 
   // Serialize all Date fields to strings so they can safely cross the
   // Server → Client component boundary without React error #441.
-  const serializedQuests = quests.map(q => ({
+  // We use JSON.parse(JSON.stringify()) to completely strip any Prisma internal properties
+  // or symbols that might cause Vercel's strict React Server Component compiler to throw.
+  const serializedQuests = JSON.parse(JSON.stringify(quests.map(q => ({
     ...q,
     dueDate: q.dueDate?.toISOString() ?? null,
     completedAt: q.completedAt?.toISOString() ?? null,
     createdAt: q.createdAt.toISOString(),
-  }))
+  }))))
 
-  const serializedChallenges = userChallenges.map((uc: any) => ({
+  const serializedChallenges = JSON.parse(JSON.stringify(userChallenges.map((uc: any) => ({
     ...uc,
     completedAt: uc.completedAt?.toISOString() ?? null,
     createdAt: uc.createdAt?.toISOString() ?? null,
     challenge: uc.challenge ? {
       ...uc.challenge,
     } : undefined,
-  }))
+  }))))
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">

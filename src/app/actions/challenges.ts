@@ -302,6 +302,7 @@ export async function claimChallengeReward(userChallengeId: string) {
     throw error;
   }
 
-  revalidatePath("/quests");
+  revalidatePath("/quests", 'layout');
+  revalidatePath("/", 'layout');
   return { success: true };
 }

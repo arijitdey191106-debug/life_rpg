@@ -291,10 +291,10 @@ export async function claimQuestReward(questId: string) {
     console.error("Failed to check achievements", e)
   }
 
-  revalidatePath('/quests')
-  revalidatePath('/')
-  revalidatePath('/character')
-  revalidatePath('/progress')
+  revalidatePath('/quests', 'layout')
+  revalidatePath('/', 'layout')
+  revalidatePath('/character', 'layout')
+  revalidatePath('/progress', 'layout')
   return { 
     xp: quest.xpReward, 
     gold: quest.goldReward, 

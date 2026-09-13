@@ -15,19 +15,19 @@ export default function NearbyClient({ initialOptIn }: { initialOptIn: boolean }
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [players, setPlayers] = useState<any[]>([])
-  
+
   const [challengingId, setChallengingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (optIn) {
       refreshNearby()
     }
-  }, [optIn])
+  }, []) // Only run on mount — toggle handler calls refreshNearby directly after DB write
 
   const refreshNearby = async () => {
     setLoading(true)
     setError(null)
-    
+
     if (!navigator.geolocation) {
       setError("Geolocation is not supported by your browser.")
       setLoading(false)
@@ -39,46 +39,68 @@ export default function NearbyClient({ initialOptIn }: { initialOptIn: boolean }
         try {
           const lat = pos.coords.latitude
           const lng = pos.coords.longitude
-          
+
+          // Save location to DB (race-condition-safe: no longer guarded by locationOptIn in updateLocation)
           await updateLocation(lat, lng)
-          
+
           const res = await getNearbyPlayers()
           if (res.success && res.nearby) {
             setPlayers(res.nearby)
+            // Check if the server reports location was not yet recorded
+            if ((res as any).noLocationYet) {
+              setError("Location recorded. Tap Refresh to scan for nearby players.")
+            }
           } else {
             setError(res.error || "Failed to fetch nearby players.")
           }
         } catch (err) {
-          setError("Failed to update location.")
+          setError("Unable to determine your location. Please try again.")
         } finally {
           setLoading(false)
         }
       },
       (err) => {
+        // Map GeolocationPositionError codes to clear messages
         if (err.code === err.PERMISSION_DENIED) {
-          setError("Location access is required to discover nearby players. Please enable it in your browser.")
-          // Turn off optIn if permission denied
+          setError(
+            "Location access is required to discover nearby players. Please enable location in your browser settings and refresh."
+          )
+          // Turn off optIn locally if permission was denied
           handleToggleOptIn(false)
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          setError("Unable to determine your location. Please try again.")
+        } else if (err.code === err.TIMEOUT) {
+          setError("Location request timed out. Please try again.")
         } else {
-          setError("Failed to get location.")
+          setError("Failed to get location. Please try again.")
         }
         setLoading(false)
+      },
+      {
+        timeout: 10000,         // 10 s timeout to prevent silent hanging
+        maximumAge: 60000,      // Accept cached position up to 1 min old
+        enableHighAccuracy: false // Low accuracy is sufficient and faster
       }
     )
   }
 
   const handleToggleOptIn = async (newOptIn: boolean) => {
     setOptIn(newOptIn)
+    // Await the DB write FIRST so that updateLocation won't race against the opt-in flag
     await updateUserSettings({ locationOptIn: newOptIn })
     if (!newOptIn) {
       setPlayers([])
+      setError(null)
+    } else {
+      // DB write is done — now it's safe to get location and scan
+      refreshNearby()
     }
   }
 
   const handleChallenge = async (playerId: string) => {
     try {
       setChallengingId(playerId)
-      await challengeFriend(playerId, "STREAK", 0) // Default simple challenge
+      await challengeFriend(playerId, "STREAK", 0)
       router.push("/duels")
     } catch (err: any) {
       alert(err.message || "Failed to send challenge")
@@ -95,8 +117,8 @@ export default function NearbyClient({ initialOptIn }: { initialOptIn: boolean }
           <p className="text-white/60 text-sm">Visible to Nearby Players (Approximate Distance Only)</p>
         </div>
         <label className="relative inline-flex items-center cursor-pointer">
-          <input 
-            type="checkbox" 
+          <input
+            type="checkbox"
             className="sr-only peer"
             checked={optIn}
             onChange={(e) => handleToggleOptIn(e.target.checked)}
@@ -107,7 +129,7 @@ export default function NearbyClient({ initialOptIn }: { initialOptIn: boolean }
 
       {error && (
         <div className="bg-red-900/50 border border-red-500/50 text-red-200 p-4 rounded-xl flex items-center gap-3">
-          <ShieldOff className="w-5 h-5" />
+          <ShieldOff className="w-5 h-5 shrink-0" />
           <p>{error}</p>
         </div>
       )}
@@ -118,7 +140,7 @@ export default function NearbyClient({ initialOptIn }: { initialOptIn: boolean }
             <h2 className="text-xl font-bold flex items-center gap-2">
               <MapPin className="text-[var(--primary)]" /> Players within 1 KM
             </h2>
-            <button 
+            <button
               onClick={refreshNearby}
               disabled={loading}
               className="text-sm bg-white/10 hover:bg-white/20 px-3 py-1 rounded transition-colors disabled:opacity-50"
@@ -134,7 +156,7 @@ export default function NearbyClient({ initialOptIn }: { initialOptIn: boolean }
             </div>
           ) : players.length === 0 ? (
             <div className="glass-panel p-12 text-center text-white/50">
-              <p>No adventurers found nearby.</p>
+              <p>No players within 1 KM are currently visible.</p>
               <p className="text-sm mt-2">Check back later or invite friends to join your party.</p>
             </div>
           ) : (
@@ -160,14 +182,17 @@ export default function NearbyClient({ initialOptIn }: { initialOptIn: boolean }
                         <div className="flex items-center gap-3 mt-1 text-sm text-white/60">
                           <span className="text-[var(--primary)]">Level {p.level}</span>
                           <span className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3" /> ~{p.distance}m away
+                            <MapPin className="w-3 h-3" />
+                            {p.distance >= 1000
+                              ? `~${(p.distance / 1000).toFixed(1)} km away`
+                              : `~${p.distance} m away`}
                           </span>
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="flex gap-2">
-                      <Link 
+                      <Link
                         href={`/party/${p.username}`}
                         className="flex-1 bg-white/5 hover:bg-white/10 text-center py-2 rounded font-medium transition-colors text-sm"
                       >

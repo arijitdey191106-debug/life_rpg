@@ -439,15 +439,15 @@ export default function QuestBoardClient({
                   >
                     ACCEPT QUEST
                   </button>
-                ) : quest.status === 'PENDING' && (
-                  <button 
-                    onClick={() => handleComplete(quest.id)}
-                    className="bg-green-600/20 hover:bg-green-600/40 text-green-400 p-2 rounded-full transition-all hover:scale-110 border border-green-600/50 shadow-[0_0_10px_rgba(34,197,94,0.3)]"
-                    aria-label="Complete Quest"
-                  >
-                    <CheckCircle2 className="w-6 h-6" />
-                  </button>
-                )}
+                  ) : quest.status === 'PENDING' && (
+                    <button 
+                      onClick={() => handleComplete(quest.id)}
+                      className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 text-sm font-bold tracking-widest rounded-md transition-all shadow-[0_0_10px_rgba(34,197,94,0.4)] flex items-center gap-2"
+                      aria-label="Complete Quest"
+                    >
+                      <CheckCircle2 className="w-5 h-5" /> COMPLETE
+                    </button>
+                  )}
                 {(quest.status === 'COMPLETED' || quest.status === 'CLAIMED') && (
                   <div className="text-sm text-gray-500">
                     Completed on: {quest.completedAt?.toLocaleDateString()}

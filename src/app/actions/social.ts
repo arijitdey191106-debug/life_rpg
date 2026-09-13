@@ -3,13 +3,15 @@
 import { prisma } from "@/lib/prisma"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { revalidatePath } from "next/cache"; // no, next/cache
+import { revalidatePath } from "next/cache"
+import { Prisma } from "@prisma/client"
 
 export async function searchUsers(query: string) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return { success: false, error: "Unauthorized" }
 
   const userId = (session.user as any).id as string
+  if (!userId) return { success: false, error: "Session error. Please log in again." }
 
   if (!query || query.trim().length === 0) {
     return { success: true, users: [] }
@@ -19,8 +21,8 @@ export async function searchUsers(query: string) {
     const users = await prisma.user.findMany({
       where: {
         username: {
-          contains: query,
-          // ignoreCase: true // Wait, SQLite doesn't support ignoreCase with contains well, it's default case-insensitive for some collations but let's just do contains.
+          contains: query.trim(),
+          mode: "insensitive", // Fix: case-insensitive search on PostgreSQL
         },
         id: {
           not: userId
@@ -50,8 +52,11 @@ export async function sendFriendRequest(receiverId: string) {
   if (!session?.user) return { success: false, error: "Unauthorized" }
   const senderId = (session.user as any).id as string
 
+  if (!senderId) return { success: false, error: "Session error. Please log in again." }
+  if (!receiverId) return { success: false, error: "Invalid target user." }
+
   if (senderId === receiverId) {
-    return { success: false, error: "Cannot send request to yourself" }
+    return { success: false, error: "You cannot send a request to yourself." }
   }
 
   try {
@@ -66,22 +71,32 @@ export async function sendFriendRequest(receiverId: string) {
     })
 
     if (existingFriend) {
-      return { success: false, error: "Already friends" }
+      return { success: false, error: "You are already connected." }
     }
 
-    // Check if request already exists
+    // Check if ANY request already exists between these two users (in either direction)
+    // Must check both directions because the schema unique constraint is (senderId, receiverId)
     const existingRequest = await prisma.friendRequest.findFirst({
       where: {
         OR: [
           { senderId: senderId, receiverId: receiverId },
           { senderId: receiverId, receiverId: senderId }
-        ],
-        status: "PENDING"
+        ]
       }
     })
 
     if (existingRequest) {
-      return { success: false, error: "Friend request already pending" }
+      if (existingRequest.senderId === senderId && existingRequest.status === "PENDING") {
+        return { success: false, error: "Request already sent." }
+      }
+      if (existingRequest.senderId === receiverId && existingRequest.status === "PENDING") {
+        return {
+          success: false,
+          error: "This player already sent you a request. Check your Requests Received section."
+        }
+      }
+      // Previously declined — delete and re-create so the user can retry
+      await prisma.friendRequest.delete({ where: { id: existingRequest.id } })
     }
 
     await prisma.friendRequest.create({
@@ -93,10 +108,14 @@ export async function sendFriendRequest(receiverId: string) {
     })
 
     revalidatePath("/party")
-    return { success: true }
+    return { success: true, message: "Request sent successfully." }
   } catch (error) {
+    // Safety net: catch Prisma unique constraint violation (P2002)
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return { success: false, error: "Request already sent." }
+    }
     console.error("Send friend request error:", error)
-    return { success: false, error: "Failed to send request" }
+    return { success: false, error: "Unable to send request. Please try again." }
   }
 }
 
@@ -104,6 +123,7 @@ export async function cancelFriendRequest(requestId: string) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return { success: false, error: "Unauthorized" }
   const userId = (session.user as any).id as string
+  if (!userId) return { success: false, error: "Session error. Please log in again." }
 
   try {
     const request = await prisma.friendRequest.findUnique({
@@ -130,6 +150,7 @@ export async function acceptFriendRequest(requestId: string) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return { success: false, error: "Unauthorized" }
   const userId = (session.user as any).id as string
+  if (!userId) return { success: false, error: "Session error. Please log in again." }
 
   try {
     const request = await prisma.friendRequest.findUnique({
@@ -140,7 +161,7 @@ export async function acceptFriendRequest(requestId: string) {
       return { success: false, error: "Invalid request" }
     }
 
-    // Use transaction to delete request and create friendships
+    // Use transaction to delete request and create friendship atomically
     await prisma.$transaction(async (tx) => {
       await tx.friendRequest.delete({
         where: { id: requestId }
@@ -155,7 +176,6 @@ export async function acceptFriendRequest(requestId: string) {
     })
 
     revalidatePath("/party")
-    revalidatePath("/party")
     return { success: true }
   } catch (error) {
     console.error("Accept friend request error:", error)
@@ -167,6 +187,7 @@ export async function declineFriendRequest(requestId: string) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return { success: false, error: "Unauthorized" }
   const userId = (session.user as any).id as string
+  if (!userId) return { success: false, error: "Session error. Please log in again." }
 
   try {
     const request = await prisma.friendRequest.findUnique({
@@ -181,7 +202,6 @@ export async function declineFriendRequest(requestId: string) {
       where: { id: requestId }
     })
 
-    revalidatePath("/party")
     revalidatePath("/party")
     return { success: true }
   } catch (error) {
@@ -205,7 +225,7 @@ export async function removeFriend(friendId: string) {
       }
     })
 
-    // Also delete any existing requests between them to be safe
+    // Also delete any existing requests between them
     await prisma.friendRequest.deleteMany({
        where: {
         OR: [
@@ -227,6 +247,7 @@ export async function getParty() {
   const session = await getServerSession(authOptions)
   if (!session?.user) return { success: false, error: "Unauthorized" }
   const userId = (session.user as any).id as string
+  if (!userId) return { success: false, error: "Session error. Please log in again." }
 
   try {
     // Get pending received requests
